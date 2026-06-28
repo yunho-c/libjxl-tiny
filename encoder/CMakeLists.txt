@@ -35,3 +35,27 @@ target_link_libraries(cjxl_tiny jxl_tiny)
 
 add_executable(jxl_tiny_trace jxl_tiny_trace_main.cc)
 target_link_libraries(jxl_tiny_trace jxl_tiny)
+
+if(BUILD_TESTING)
+  find_program(PYTHON3_EXECUTABLE python3)
+  if(PYTHON3_EXECUTABLE)
+    execute_process(
+      COMMAND ${PYTHON3_EXECUTABLE} -c "import numpy"
+      RESULT_VARIABLE JPEGXL_TINY_NUMPY_RESULT
+      OUTPUT_QUIET
+      ERROR_QUIET)
+    if(JPEGXL_TINY_NUMPY_RESULT EQUAL 0)
+      add_test(
+        NAME trace_smoke_test
+        COMMAND ${PYTHON3_EXECUTABLE}
+          ${PROJECT_SOURCE_DIR}/tools/trace_smoke_test.py
+          --cjxl $<TARGET_FILE:cjxl_tiny>
+          --trace $<TARGET_FILE:jxl_tiny_trace>
+          --work-dir ${CMAKE_CURRENT_BINARY_DIR}/trace_smoke_test)
+    else()
+      message(STATUS "NumPy not found; skipping trace_smoke_test")
+    endif()
+  else()
+    message(STATUS "python3 not found; skipping trace_smoke_test")
+  endif()
+endif()
