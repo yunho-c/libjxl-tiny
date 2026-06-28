@@ -172,6 +172,11 @@ Recommended coarse trace points:
 
 Recommended fine-grained trace points:
 
+* `ac_strategy_entropy_8x8`, `ac_strategy_entropy_16x8`,
+  `ac_strategy_entropy_8x16`, and `ac_strategy_costs`: candidate scores used
+  when selecting a transform layout for a 16x16 region;
+* `ac_strategy_decision`: the selected 2x2 raw AC strategy encoding for a
+  traced 16x16 region;
 * `dct_coefficients`: selected per-block transform coefficients;
 * `quantized_ac`: quantized AC coefficients after chroma-from-luma removal;
 * `num_nonzeros`: nonzero counts used for AC contexts;
@@ -241,6 +246,7 @@ pipeline errors.
 
 Add detailed traces for the hardest numerical stages:
 
+* AC strategy candidate entropies, candidate costs, and selected 2x2 decision;
 * transform coefficients before quantization;
 * quantized AC coefficients;
 * nonzero counts;

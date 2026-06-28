@@ -712,11 +712,15 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
 #if OPTIMIZE_BLOCK_SIZES
   for (size_t cy = 0; cy + 1 < tile_brect.ysize(); cy += 2) {
     for (size_t cx = 0; cx + 1 < tile_brect.xsize(); cx += 2) {
-      FindBest16x16Transform(group, group_brect, tile_brect.x0(),
-                             tile_brect.y0(), cx, cy, distp.distance, matrices,
-                             tmem->quant_field, tmem->masking, ytox, ytob,
-                             &dc_data->ac_strategy, tmem->block_storage(),
-                             tmem->scratch_space());
+      std::ostringstream decision_trace_name;
+      decision_trace_name << TraceTileName(dc_group_id, ac_group_id, stripe_y,
+                                           tile_x, "decision")
+                          << "_y_" << cy << "_x_" << cx;
+      JXL_RETURN_IF_ERROR(FindBest16x16Transform(
+          group, group_brect, tile_brect.x0(), tile_brect.y0(), cx, cy,
+          distp.distance, matrices, tmem->quant_field, tmem->masking, ytox,
+          ytob, &dc_data->ac_strategy, tmem->block_storage(),
+          tmem->scratch_space(), trace, decision_trace_name.str()));
     }
   }
   Rect rect(group_brect.x0() + tile_brect.x0(),

@@ -22,6 +22,7 @@
 #include "encoder/base/status.h"
 #include "encoder/chroma_from_luma.h"
 #include "encoder/enc_transforms-inl.h"
+#include "encoder/trace.h"
 
 // Some of the floating point constants in this file and in other
 // files in the libjxl project have been obtained using the
@@ -164,13 +165,15 @@ float EstimateEntropy(const AcStrategy& acs, const Image3F& opsin, size_t bx,
       block, scratch_space);
 }
 
-void FindBest16x16Transform(const Image3F& opsin, const Rect& block_rect,
-                            size_t bx, size_t by, size_t cx, size_t cy,
-                            float distance, const DequantMatrices& matrices,
-                            const ImageF& qf, const ImageF& maskf, int8_t ytox,
-                            int8_t ytob,
-                            AcStrategyImage* JXL_RESTRICT ac_strategy,
-                            float* block, float* scratch_space) {
+Status FindBest16x16Transform(const Image3F& opsin, const Rect& block_rect,
+                              size_t bx, size_t by, size_t cx, size_t cy,
+                              float distance, const DequantMatrices& matrices,
+                              const ImageF& qf, const ImageF& maskf,
+                              int8_t ytox, int8_t ytob,
+                              AcStrategyImage* JXL_RESTRICT ac_strategy,
+                              float* block, float* scratch_space,
+                              EncoderTraceSink* trace,
+                              const std::string& trace_prefix) {
   const AcStrategy acs8X8 = AcStrategy::FromRawStrategy(AcStrategy::DCT);
   const AcStrategy acs16X8 = AcStrategy::FromRawStrategy(AcStrategy::DCT16X8);
   const AcStrategy acs8X16 = AcStrategy::FromRawStrategy(AcStrategy::DCT8X16);
@@ -216,6 +219,23 @@ void FindBest16x16Transform(const Image3F& opsin, const Rect& block_rect,
                    std::min(entropy_16X8_right, entropy[0][1] + entropy[1][1]);
   float cost8x16 = std::min(entropy_8X16_top, entropy[0][0] + entropy[0][1]) +
                    std::min(entropy_8X16_bottom, entropy[1][0] + entropy[1][1]);
+  if (trace != nullptr) {
+    const float entropy_16x8[2] = {entropy_16X8_left, entropy_16X8_right};
+    const float entropy_8x16[2] = {entropy_8X16_top, entropy_8X16_bottom};
+    const float costs[2] = {cost16x8, cost8x16};
+    JXL_RETURN_IF_ERROR(trace->WriteArray(
+        trace_prefix + "_ac_strategy_entropy_8x8", "float32", {2, 2},
+        entropy, sizeof(float), "float_stage"));
+    JXL_RETURN_IF_ERROR(trace->WriteArray(
+        trace_prefix + "_ac_strategy_entropy_16x8", "float32", {2},
+        entropy_16x8, sizeof(float), "float_stage"));
+    JXL_RETURN_IF_ERROR(trace->WriteArray(
+        trace_prefix + "_ac_strategy_entropy_8x16", "float32", {2},
+        entropy_8x16, sizeof(float), "float_stage"));
+    JXL_RETURN_IF_ERROR(trace->WriteArray(
+        trace_prefix + "_ac_strategy_costs", "float32", {2}, costs,
+        sizeof(float), "float_stage"));
+  }
   if (cost16x8 < cost8x16) {
     if (entropy_16X8_left < entropy[0][0] + entropy[1][0]) {
       ac_strategy->Set(block_rect.x0() + bx + cx, block_rect.y0() + by + cy,
@@ -235,6 +255,24 @@ void FindBest16x16Transform(const Image3F& opsin, const Rect& block_rect,
                        AcStrategy::DCT8X16);
     }
   }
+  if (trace != nullptr) {
+    uint8_t decision[4];
+    size_t pos = 0;
+    for (size_t dy = 0; dy < 2; ++dy) {
+      AcStrategyRow row =
+          ac_strategy->ConstRow(block_rect.y0() + by + cy + dy,
+                                block_rect.x0() + bx + cx);
+      for (size_t dx = 0; dx < 2; ++dx) {
+        const AcStrategy acs = row[dx];
+        decision[pos++] =
+            (acs.RawStrategy() << 1) | (acs.IsFirstBlock() ? 1 : 0);
+      }
+    }
+    JXL_RETURN_IF_ERROR(trace->WriteArray(
+        trace_prefix + "_ac_strategy_decision", "uint8", {2, 2}, decision,
+        sizeof(uint8_t), "exact"));
+  }
+  return true;
 }
 
 void AdjustQuantField(const AcStrategyImage& ac_strategy,

@@ -15,6 +15,12 @@ WC_MULTIPLIERS_8 = np.asarray(
 WC_MULTIPLIERS = {
     4: np.asarray((0.541196100146197, 1.3065629648763764), dtype=np.float32),
     8: WC_MULTIPLIERS_8,
+    16: np.asarray(
+        (0.5024192861881557, 0.5224986149396889, 0.5669440348163577,
+         0.6468217833599901, 0.7881546234512502, 1.060677685990347,
+         1.7224470982383342, 5.101148618689155),
+        dtype=np.float32,
+    ),
 }
 
 
@@ -50,18 +56,36 @@ def _dct_1d(values: np.ndarray) -> np.ndarray:
   return out
 
 
+def _dct_columns(block: np.ndarray) -> np.ndarray:
+  rows, cols = block.shape
+  out = np.empty_like(block)
+  scale = _f32(1.0 / rows)
+  for x in range(cols):
+    out[:, x] = _dct_1d(block[:, x]) * scale
+  return out
+
+
+def scaled_dct(block: np.ndarray) -> np.ndarray:
+  """Compute the scaled DCT used by `TransformFromPixels`.
+
+  For 16x8 input this returns the encoder's 8x16 coefficient layout.
+  """
+  block = np.asarray(block, dtype=np.float32)
+  if block.shape not in ((8, 8), (16, 8), (8, 16)):
+    raise ValueError("expected an 8x8, 16x8, or 8x16 block")
+
+  rows, cols = block.shape
+  if rows < cols:
+    tmp = _dct_columns(block)
+    coeff = _dct_columns(tmp.T.copy()).T.copy()
+  else:
+    tmp = _dct_columns(block)
+    coeff = _dct_columns(tmp.T.copy())
+  return coeff
+
+
 def scaled_dct_8x8(block: np.ndarray) -> np.ndarray:
   """Compute the scaled 8x8 DCT used by `TransformFromPixels(DCT)`."""
-  block = np.asarray(block, dtype=np.float32)
-  if block.shape != (BLOCK_DIM, BLOCK_DIM):
+  if np.asarray(block).shape != (BLOCK_DIM, BLOCK_DIM):
     raise ValueError("expected an 8x8 block")
-
-  tmp = np.empty_like(block)
-  for x in range(BLOCK_DIM):
-    tmp[:, x] = _dct_1d(block[:, x]) * _f32(1.0 / BLOCK_DIM)
-
-  transposed = tmp.T.copy()
-  out = np.empty_like(block)
-  for x in range(BLOCK_DIM):
-    out[:, x] = _dct_1d(transposed[:, x]) * _f32(1.0 / BLOCK_DIM)
-  return out
+  return scaled_dct(block)

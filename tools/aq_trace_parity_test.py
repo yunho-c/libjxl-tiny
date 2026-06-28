@@ -32,6 +32,7 @@ from jxl_tiny import (
     compute_adaptive_quantization,
     compute_chroma_from_luma,
     copy_and_pad_image,
+    find_best_16x16_transform,
     read_pfm,
     to_xyb,
 )
@@ -134,6 +135,59 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
       atol=0,
       rtol=0,
   )
+  decision = find_best_16x16_transform(
+      xyb,
+      result.aq_map,
+      result.mask,
+      args.distance,
+      int(cfl.ytox),
+      int(cfl.ytob),
+  )
+  assert_close(
+      "ac_strategy_entropy_8x8",
+      load_artifact(trace_dir, manifest, "ac_strategy_entropy_8x8"),
+      decision.entropy_8x8,
+      atol=args.strategy_atol,
+      rtol=args.strategy_rtol,
+  )
+  assert_close(
+      "ac_strategy_entropy_16x8",
+      load_artifact(trace_dir, manifest, "ac_strategy_entropy_16x8"),
+      decision.entropy_16x8,
+      atol=args.strategy_atol,
+      rtol=args.strategy_rtol,
+  )
+  assert_close(
+      "ac_strategy_entropy_8x16",
+      load_artifact(trace_dir, manifest, "ac_strategy_entropy_8x16"),
+      decision.entropy_8x16,
+      atol=args.strategy_atol,
+      rtol=args.strategy_rtol,
+  )
+  assert_close(
+      "ac_strategy_costs",
+      load_artifact(trace_dir, manifest, "ac_strategy_costs"),
+      decision.costs,
+      atol=args.strategy_atol,
+      rtol=args.strategy_rtol,
+  )
+  traced_ac_strategy = load_artifact(trace_dir, manifest, "ac_strategy")
+  assert_close(
+      "ac_strategy_decision",
+      load_artifact(trace_dir, manifest, "ac_strategy_decision"),
+      decision.decision,
+      atol=0,
+      rtol=0,
+  )
+  expected_ac_strategy = np.full_like(traced_ac_strategy, np.uint8(1))
+  expected_ac_strategy[:2, :2] = decision.decision
+  assert_close(
+      "ac_strategy",
+      traced_ac_strategy,
+      expected_ac_strategy,
+      atol=0,
+      rtol=0,
+  )
 
   print(f"aq trace parity test passed: {trace_dir}")
 
@@ -151,6 +205,8 @@ def main(argv: list[str]) -> int:
   parser.add_argument("--aq-rtol", type=float, default=5e-4)
   parser.add_argument("--mask-atol", type=float, default=5e-4)
   parser.add_argument("--mask-rtol", type=float, default=5e-4)
+  parser.add_argument("--strategy-atol", type=float, default=1e-3)
+  parser.add_argument("--strategy-rtol", type=float, default=1e-5)
   args = parser.parse_args(argv)
 
   try:
