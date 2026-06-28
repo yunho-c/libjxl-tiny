@@ -959,6 +959,37 @@ Status TraceEntropyCode(EncoderTraceSink* trace, const std::string& prefix,
   return true;
 }
 
+Status TraceSectionBytes(EncoderTraceSink* trace, const std::string& name,
+                         const BitWriter& writer) {
+  if (trace == nullptr) return true;
+  std::vector<uint8_t> bytes = writer.GetPaddedBytes();
+  return trace->WriteBytes(name, bytes.data(), bytes.size());
+}
+
+Status TraceSections(EncoderTraceSink* trace,
+                     const std::vector<BitWriter>& sections,
+                     const ImageDim& dim) {
+  if (trace == nullptr) return true;
+  JXL_RETURN_IF_ERROR(
+      TraceSectionBytes(trace, "dc_global_section", sections[0]));
+  for (size_t i = 0; i < dim.num_dc_groups; ++i) {
+    std::ostringstream name;
+    name << "dc_group_section_" << i;
+    JXL_RETURN_IF_ERROR(TraceSectionBytes(trace, name.str(), sections[1 + i]));
+  }
+  const size_t ac_global_index = 1 + dim.num_dc_groups;
+  JXL_RETURN_IF_ERROR(
+      TraceSectionBytes(trace, "ac_global_section", sections[ac_global_index]));
+  const size_t ac_group_start = 2 + dim.num_dc_groups;
+  for (size_t i = 0; i < dim.num_groups; ++i) {
+    std::ostringstream name;
+    name << "ac_group_section_" << i;
+    JXL_RETURN_IF_ERROR(
+        TraceSectionBytes(trace, name.str(), sections[ac_group_start + i]));
+  }
+  return true;
+}
+
 }  // namespace
 
 Status EncodeFrame(const float distance, const Image3F& linear,
@@ -1003,6 +1034,7 @@ Status EncodeFrame(const float distance, const Image3F& linear,
   // Generate DC and AC global sections.
   WriteDCGlobal(distp, dim.num_dc_groups, dc_code, &sections[0]);
   WriteACGlobal(dim.num_groups, ac_code, &sections[1 + dim.num_dc_groups]);
+  JXL_RETURN_IF_ERROR(TraceSections(trace, sections, dim));
 
   // Assemble final bitstream.
   WriteFrameHeader(distp.x_qm_scale, distp.epf_iters, writer);

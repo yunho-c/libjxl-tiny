@@ -51,6 +51,19 @@ struct BitWriter {
     return Span<const uint8_t>(storage_.data(), bits_written_ / kBitsPerByte);
   }
 
+  std::vector<uint8_t> GetPaddedBytes() const {
+    const size_t bytes = DivCeil(bits_written_, kBitsPerByte);
+    std::vector<uint8_t> out(bytes);
+    for (size_t i = 0; i < bytes; ++i) {
+      out[i] = storage_[i];
+    }
+    const size_t valid_bits_in_last_byte = bits_written_ % kBitsPerByte;
+    if (valid_bits_in_last_byte != 0 && !out.empty()) {
+      out.back() &= (1u << valid_bits_in_last_byte) - 1;
+    }
+    return out;
+  }
+
   // Example usage: bytes = std::move(writer).TakeBytes(); Useful for the
   // top-level encoder which returns PaddedBytes, not a BitWriter.
   // *this must be an rvalue reference and is invalid afterwards.

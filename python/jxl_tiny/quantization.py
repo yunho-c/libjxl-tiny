@@ -51,9 +51,12 @@ MATRICES = {
 
 @dataclass(frozen=True)
 class DistanceParams:
+  global_scale: int
+  quant_dc: int
   scale: np.float32
   scale_dc: np.float32
   x_qm_scale: int
+  epf_iters: int
 
 
 @dataclass(frozen=True)
@@ -104,9 +107,17 @@ def compute_distance_params(distance: float) -> DistanceParams:
       x_qm_scale += 1
   if distance < 0.299:
     x_qm_scale += 1
-  return DistanceParams(scale=scale_f,
+  epf_iters = 0
+  for threshold in (0.7, 1.5, 4.0):
+    if distance >= threshold:
+      epf_iters += 1
+
+  return DistanceParams(global_scale=global_scale,
+                        quant_dc=quant_dc_i,
+                        scale=scale_f,
                         scale_dc=np.float32(scale_dc),
-                        x_qm_scale=x_qm_scale)
+                        x_qm_scale=x_qm_scale,
+                        epf_iters=epf_iters)
 
 
 def _canonical_blocks(strategy: int) -> tuple[int, int]:

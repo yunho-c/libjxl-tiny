@@ -23,6 +23,8 @@ class EntropyCodeTables:
   context_map: np.ndarray
   prefix_depths: np.ndarray
   prefix_bits: np.ndarray
+  orig_context_map: np.ndarray | None = None
+  orig_num_contexts: int | None = None
 
 
 def uint_token(value: int) -> int:
@@ -240,17 +242,41 @@ def optimize_entropy_code_from_context_values(
                            prefix_bits=bits)
 
 
+def optimize_prefix_code_from_context_values(
+    context_values: np.ndarray, num_prefix_codes: int,
+    context_map: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+  pairs = np.asarray(context_values, dtype=np.uint32)
+  histograms = np.zeros((num_prefix_codes, K_ALPHABET_SIZE), dtype=np.uint32)
+  for context, value in pairs:
+    mapped_context = int(context)
+    if context_map is not None:
+      mapped_context = int(context_map[mapped_context])
+    histograms[mapped_context, uint_token(int(value))] += 1
+  return _build_huffman_codes(histograms)
+
+
 def dc_entropy_code(dc_tokens: np.ndarray,
                     ac_metadata_tokens: np.ndarray) -> EntropyCodeTables:
   tokens = np.concatenate(
       (np.asarray(dc_tokens, dtype=np.uint32),
        np.asarray(ac_metadata_tokens, dtype=np.uint32)),
       axis=0)
-  return optimize_entropy_code_from_context_values(tokens, 45)
+  code = optimize_entropy_code_from_context_values(tokens, 45)
+  return EntropyCodeTables(context_map=code.context_map,
+                           prefix_depths=code.prefix_depths,
+                           prefix_bits=code.prefix_bits,
+                           orig_context_map=np.arange(45, dtype=np.uint8),
+                           orig_num_contexts=45)
 
 
 def ac_entropy_code(ac_tokens: np.ndarray) -> EntropyCodeTables:
   logical = np.asarray(ac_tokens, dtype=np.uint32)
   mapped = logical.copy()
   mapped[:, 0] = K_AC_CONTEXT_MAP[mapped[:, 0]]
-  return optimize_entropy_code_from_context_values(mapped, 64)
+  code = optimize_entropy_code_from_context_values(mapped, 64)
+  return EntropyCodeTables(context_map=code.context_map,
+                           prefix_depths=code.prefix_depths,
+                           prefix_bits=code.prefix_bits,
+                           orig_context_map=K_AC_CONTEXT_MAP,
+                           orig_num_contexts=int(K_AC_CONTEXT_MAP.shape[0]))
