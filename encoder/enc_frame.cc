@@ -934,6 +934,31 @@ void CombineSections(std::vector<BitWriter>* sections, BitWriter* writer) {
   writer->AppendByteAligned(sections);
 }
 
+Status TraceEntropyCode(EncoderTraceSink* trace, const std::string& prefix,
+                        const EntropyCode& code) {
+  if (trace == nullptr) return true;
+  JXL_RETURN_IF_ERROR(trace->WriteArray(
+      prefix + "_context_map", "uint8", {code.num_contexts},
+      code.context_map, sizeof(uint8_t), "exact"));
+  std::vector<uint8_t> depths(code.num_prefix_codes * kAlphabetSize);
+  std::vector<uint16_t> bits(code.num_prefix_codes * kAlphabetSize);
+  for (size_t c = 0; c < code.num_prefix_codes; ++c) {
+    for (size_t s = 0; s < kAlphabetSize; ++s) {
+      depths[c * kAlphabetSize + s] = code.prefix_codes[c].depths[s];
+      bits[c * kAlphabetSize + s] = code.prefix_codes[c].bits[s];
+    }
+  }
+  JXL_RETURN_IF_ERROR(trace->WriteArray(
+      prefix + "_prefix_depths", "uint8",
+      {code.num_prefix_codes, kAlphabetSize}, depths.data(), sizeof(uint8_t),
+      "exact"));
+  JXL_RETURN_IF_ERROR(trace->WriteArray(
+      prefix + "_prefix_bits", "uint16",
+      {code.num_prefix_codes, kAlphabetSize}, bits.data(), sizeof(uint16_t),
+      "exact"));
+  return true;
+}
+
 }  // namespace
 
 Status EncodeFrame(const float distance, const Image3F& linear,
@@ -972,6 +997,8 @@ Status EncodeFrame(const float distance, const Image3F& linear,
   size_t ac_group_start = 2 + dim.num_dc_groups;
   OptimizeSections(&ac_code, &sections[ac_group_start], dim.num_groups);
 #endif
+  JXL_RETURN_IF_ERROR(TraceEntropyCode(trace, "dc_entropy", dc_code));
+  JXL_RETURN_IF_ERROR(TraceEntropyCode(trace, "ac_entropy", ac_code));
 
   // Generate DC and AC global sections.
   WriteDCGlobal(distp, dim.num_dc_groups, dc_code, &sections[0]);

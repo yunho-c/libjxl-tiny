@@ -190,6 +190,8 @@ Recommended fine-grained trace points:
 * `ac_metadata_tokens`: chroma-from-luma, AC strategy, quant field, and EPF
   metadata tokens before entropy coding;
 * `ac_tokens`: AC coefficient token stream before entropy coding.
+* `dc_entropy_*` and `ac_entropy_*`: optimized context maps and prefix-code
+  tables used to entropy-code DC/control and AC token streams.
 
 For fine-grained block traces, prefer small fixture images and scoped dumps.
 Dumping every coefficient for large images will make fixtures noisy and slow.
@@ -258,7 +260,9 @@ Add detailed traces for the hardest numerical stages:
 * transform coefficients before quantization, quantization-input coefficients,
   quantized AC coefficients, block-local quantized DC values, and nonzero
   counts;
-* AC/DC tokens before entropy coding.
+* AC/DC tokens before entropy coding;
+* optimized entropy-code context maps and prefix-code tables before section
+  byte serialization.
 
 Use these only for small fixtures by default. They are mainly for debugging
 rounding, coefficient order, and context modeling.
