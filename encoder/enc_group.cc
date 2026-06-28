@@ -50,6 +50,19 @@ using hwy::HWY_NAMESPACE::Round;
 using hwy::HWY_NAMESPACE::Vec;
 using hwy::HWY_NAMESPACE::Xor;
 
+void AddTraceToken(const Token& token, std::vector<uint32_t>* tokens) {
+  if (tokens == nullptr) return;
+  tokens->push_back(token.context);
+  tokens->push_back(token.value);
+}
+
+Status TraceTokens(EncoderTraceSink* trace, const std::string& name,
+                   const std::vector<uint32_t>& tokens) {
+  if (trace == nullptr) return true;
+  return trace->WriteArray(name, "uint32", {tokens.size() / 2, 2},
+                           tokens.data(), sizeof(uint32_t), "exact");
+}
+
 // Returns number of non-zero coefficients (but skip LLF).
 // We cannot rely on block[] being all-zero bits, so first truncate to integer.
 // Also writes the per-8x8 block nzeros starting at nzeros_pos.
@@ -342,6 +355,7 @@ Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
   const size_t nzeros_by0 = group_brect.y0() % kGroupDimInBlocks;
   const size_t nzeros_stride = num_nzeros->PixelsPerRow();
   const float x_qm_mul = std::pow(1.25f, x_qm_scale - 2.0f);
+  std::vector<uint32_t> trace_tokens;
 
   for (size_t by = 0; by < ysize_blocks; ++by) {
     const uint8_t* JXL_RESTRICT row_quant_ac =
@@ -519,6 +533,7 @@ Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
         const size_t histo_offset = ZeroDensityContextsOffset(block_ctx);
 
         Token token(nzero_ctx, nzeros);
+        AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
         writer->Write(8, ac_code.context_map[token.context]);
         writer->Write(16, token.value);
@@ -534,6 +549,7 @@ Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
                                                 log2_covered_blocks, prev);
           uint32_t u_coeff = PackSigned(coeff);
           Token token(ctx, u_coeff);
+          AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
           writer->Write(8, ac_code.context_map[token.context]);
           writer->Write(16, token.value);
@@ -570,6 +586,8 @@ Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
       }
     }
   }
+  JXL_RETURN_IF_ERROR(
+      TraceTokens(trace, trace_prefix + "_ac_tokens", trace_tokens));
   return true;
 }
 

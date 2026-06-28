@@ -287,11 +287,26 @@ static constexpr int64_t kGradRangeMid = 512;
 static constexpr int64_t kGradRangeMax = 1023;
 static constexpr size_t kNumDCContexts = 45;
 
-void WriteDCTokens(const Image3S& quant_dc, const EntropyCode& dc_code,
-                   BitWriter* writer) {
+void AddTraceToken(const Token& token, std::vector<uint32_t>* tokens) {
+  if (tokens == nullptr) return;
+  tokens->push_back(token.context);
+  tokens->push_back(token.value);
+}
+
+Status TraceTokens(EncoderTraceSink* trace, const std::string& name,
+                   const std::vector<uint32_t>& tokens) {
+  if (trace == nullptr) return true;
+  return trace->WriteArray(name, "uint32", {tokens.size() / 2, 2},
+                           tokens.data(), sizeof(uint32_t), "exact");
+}
+
+Status WriteDCTokens(const Image3S& quant_dc, const EntropyCode& dc_code,
+                     BitWriter* writer, EncoderTraceSink* trace = nullptr,
+                     const std::string& trace_name = "") {
   size_t nblocks = quant_dc.xsize() * quant_dc.ysize();
   size_t allotment_size = kMaxBitsPerToken * nblocks;
   const intptr_t onerow = quant_dc.Plane(0).PixelsPerRow();
+  std::vector<uint32_t> trace_tokens;
   for (size_t c : {1, 0, 2}) {
     BitWriter::Allotment allotment(writer, allotment_size);
     for (size_t y = 0; y < quant_dc.ysize(); y++) {
@@ -306,6 +321,7 @@ void WriteDCTokens(const Image3S& quant_dc, const EntropyCode& dc_code,
         int32_t residual = qrow[x] - guess;
         uint32_t ctx_id = kGradientContextLut[gradprop];
         Token token(ctx_id, PackSigned(residual));
+        AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
         writer->Write(8, dc_code.context_map[token.context]);
         writer->Write(16, token.value);
@@ -316,6 +332,8 @@ void WriteDCTokens(const Image3S& quant_dc, const EntropyCode& dc_code,
     }
     allotment.Reclaim(writer);
   }
+  JXL_RETURN_IF_ERROR(TraceTokens(trace, trace_name, trace_tokens));
+  return true;
 }
 
 size_t CountACBlocks(const AcStrategyImage& ac_strategy) {
@@ -329,14 +347,17 @@ size_t CountACBlocks(const AcStrategyImage& ac_strategy) {
   return num;
 }
 
-void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
-                           const AcStrategyImage& ac_strategy,
-                           const ImageB& raw_quant_field,
-                           const EntropyCode& dc_code, BitWriter* writer) {
+Status WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
+                             const AcStrategyImage& ac_strategy,
+                             const ImageB& raw_quant_field,
+                             const EntropyCode& dc_code, BitWriter* writer,
+                             EncoderTraceSink* trace = nullptr,
+                             const std::string& trace_name = "") {
   size_t xsize_blocks = ac_strategy.xsize();
   size_t ysize_blocks = ac_strategy.ysize();
   size_t nblocks = xsize_blocks * ysize_blocks;
   size_t allotment_size = kMaxBitsPerToken * nblocks;
+  std::vector<uint32_t> trace_tokens;
   {
     // YtoX and YtoB tokens.
     BitWriter::Allotment allotment(writer, allotment_size);
@@ -353,6 +374,7 @@ void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
           int32_t residual = static_cast<int32_t>(row[x]) - guess;
           uint32_t ctx_id = 2u - c;
           Token token(ctx_id, PackSigned(residual));
+          AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
           writer->Write(8, dc_code.context_map[token.context]);
           writer->Write(16, token.value);
@@ -375,6 +397,7 @@ void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
         int32_t cur = row_acs[x].StrategyCode();
         uint32_t ctx_id = (left > 11 ? 7 : left > 5 ? 8 : left > 3 ? 9 : 10);
         Token token(ctx_id, PackSigned(cur));
+        AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
         writer->Write(8, dc_code.context_map[token.context]);
         writer->Write(16, token.value);
@@ -399,6 +422,7 @@ void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
         int32_t residual = cur - left;
         uint32_t ctx_id = (left > 11 ? 3 : left > 5 ? 4 : left > 3 ? 5 : 6);
         Token token(ctx_id, PackSigned(residual));
+        AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
         writer->Write(8, dc_code.context_map[token.context]);
         writer->Write(16, token.value);
@@ -415,6 +439,7 @@ void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
     BitWriter::Allotment allotment(writer, allotment_size);
     for (size_t i = 0; i < nblocks; ++i) {
       Token token(0, PackSigned(4));
+      AddTraceToken(token, trace == nullptr ? nullptr : &trace_tokens);
 #if OPTIMIZE_CODE
       writer->Write(8, dc_code.context_map[token.context]);
       writer->Write(16, token.value);
@@ -424,6 +449,8 @@ void WriteACMetadataTokens(const ImageSB& ytox_map, const ImageSB& ytob_map,
     }
     allotment.Reclaim(writer);
   }
+  JXL_RETURN_IF_ERROR(TraceTokens(trace, trace_name, trace_tokens));
+  return true;
 }
 
 void WriteFrameHeader(uint32_t x_qm_scale, uint32_t epf_iters,
@@ -536,8 +563,9 @@ void WriteACGlobal(size_t num_groups, const EntropyCode& ac_code,
   WriteEntropyCode(ac_code, writer);
 }
 
-void WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
-                  BitWriter* writer) {
+Status WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
+                    BitWriter* writer, EncoderTraceSink* trace = nullptr,
+                    const std::string& trace_prefix = "") {
   {
     BitWriter::Allotment allotment(writer, 1024);
 #if OPTIMIZE_CODE
@@ -549,7 +577,8 @@ void WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
 #endif
     allotment.Reclaim(writer);
   }
-  WriteDCTokens(data.quant_dc, dc_code, writer);
+  JXL_RETURN_IF_ERROR(WriteDCTokens(
+      data.quant_dc, dc_code, writer, trace, trace_prefix + "_dc_tokens"));
   {
     size_t num_blocks = data.ac_strategy.xsize() * data.ac_strategy.ysize();
     size_t num_ac_blocks = CountACBlocks(data.ac_strategy);
@@ -568,8 +597,10 @@ void WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
 #endif
     allotment.Reclaim(writer);
   }
-  WriteACMetadataTokens(data.ytox_map, data.ytob_map, data.ac_strategy,
-                        data.raw_quant_field, dc_code, writer);
+  JXL_RETURN_IF_ERROR(WriteACMetadataTokens(
+      data.ytox_map, data.ytob_map, data.ac_strategy, data.raw_quant_field,
+      dc_code, writer, trace, trace_prefix + "_ac_metadata_tokens"));
+  return true;
 }
 
 void WriteTOC(const std::vector<BitWriter>& sections, BitWriter* output) {
@@ -846,7 +877,9 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
 
   // Write DC group to bitstream.
   const size_t dc_group_idx = 1 + dc_gy * dim.xsize_dc_groups + dc_gx;
-  WriteDCGroup(dc_data, dc_code, &(*output)[dc_group_idx]);
+  JXL_RETURN_IF_ERROR(WriteDCGroup(
+      dc_data, dc_code, &(*output)[dc_group_idx], trace,
+      TraceDCGroupName(dc_group_id, "tokens")));
   return true;
 }
 

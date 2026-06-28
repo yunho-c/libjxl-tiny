@@ -70,6 +70,12 @@ if(BUILD_TESTING)
           ${PROJECT_SOURCE_DIR}/tools/group_trace_parity_test.py
           --trace $<TARGET_FILE:jxl_tiny_trace>
           --work-dir ${CMAKE_CURRENT_BINARY_DIR}/group_trace_parity_test)
+      add_test(
+        NAME token_trace_parity_test
+        COMMAND ${PYTHON3_EXECUTABLE}
+          ${PROJECT_SOURCE_DIR}/tools/token_trace_parity_test.py
+          --trace $<TARGET_FILE:jxl_tiny_trace>
+          --work-dir ${CMAKE_CURRENT_BINARY_DIR}/token_trace_parity_test)
     else()
       message(STATUS "NumPy not found; skipping trace_smoke_test")
     endif()

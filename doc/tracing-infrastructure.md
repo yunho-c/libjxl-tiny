@@ -186,8 +186,10 @@ Recommended fine-grained trace points:
 * `block_quant_dc`: block-local quantized DC coefficients derived while
   quantizing AC groups;
 * `num_nonzeros` and `num_nonzeros_map`: nonzero counts used for AC contexts;
-* `dc_tokens`: DC token stream before entropy coding;
-* `ac_tokens`: AC token stream before entropy coding.
+* `dc_tokens`: quantized DC token stream before entropy coding;
+* `ac_metadata_tokens`: chroma-from-luma, AC strategy, quant field, and EPF
+  metadata tokens before entropy coding;
+* `ac_tokens`: AC coefficient token stream before entropy coding.
 
 For fine-grained block traces, prefer small fixture images and scoped dumps.
 Dumping every coefficient for large images will make fixtures noisy and slow.
