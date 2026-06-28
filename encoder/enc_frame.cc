@@ -826,9 +826,11 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
                                         &dc_data, &tmem, trace));
       }
       // Write AC stripe to bitstream and fill in dc_data->quant_dc.
-      WriteACGroup(stripe, stripe_brect, matrices, distp.scale, distp.scale_dc,
-                   distp.x_qm_scale, &dc_data, ac_code, &num_nzeros, &gmem,
-                   &(*output)[ac_group_idx], trace);
+      JXL_RETURN_IF_ERROR(WriteACGroup(
+          stripe, stripe_brect, matrices, distp.scale, distp.scale_dc,
+          distp.x_qm_scale, &dc_data, ac_code, &num_nzeros, &gmem,
+          &(*output)[ac_group_idx], trace,
+          TraceStripeName(dc_group_id, ac_group_id, ty, "ac")));
     }
   }
 

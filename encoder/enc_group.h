@@ -9,7 +9,10 @@
 
 #include <stddef.h>
 
+#include <string>
+
 #include "encoder/ac_strategy.h"
+#include "encoder/base/status.h"
 #include "encoder/dc_group_data.h"
 #include "encoder/enc_bit_writer.h"
 #include "encoder/entropy_code.h"
@@ -32,12 +35,13 @@ struct GroupProcessorMemory {
   hwy::AlignedFreeUniquePtr<int32_t[]> mem_coeff;
 };
 
-void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
-                  const DequantMatrices& matrices, const float scale,
-                  const float scale_dc, const uint32_t x_qm_scale,
-                  DCGroupData* dc_data, const EntropyCode& ac_code,
-                  Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer, EncoderTraceSink* trace);
+Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
+                    const DequantMatrices& matrices, const float scale,
+                    const float scale_dc, const uint32_t x_qm_scale,
+                    DCGroupData* dc_data, const EntropyCode& ac_code,
+                    Image3B* num_nzeros, GroupProcessorMemory* mem,
+                    BitWriter* writer, EncoderTraceSink* trace,
+                    const std::string& trace_prefix = "");
 
 }  // namespace jxl
 

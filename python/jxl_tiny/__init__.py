@@ -9,6 +9,7 @@ from .adaptive_quantization import compute_adaptive_quantization
 from .chroma_from_luma import compute_chroma_from_luma
 from .image import copy_and_pad_image
 from .pfm import read_pfm
+from .quantization import compute_distance_params, quantize_ac_group
 from .xyb import to_xyb
 
 __all__ = [
@@ -17,7 +18,9 @@ __all__ = [
     "find_best_16x16_transform",
     "compute_chroma_from_luma",
     "compute_adaptive_quantization",
+    "compute_distance_params",
     "copy_and_pad_image",
+    "quantize_ac_group",
     "read_pfm",
     "to_xyb",
 ]

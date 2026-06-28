@@ -6,7 +6,11 @@
 
 #include "encoder/enc_group.h"
 
+#include <algorithm>
+#include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "hwy/aligned_allocator.h"
 
@@ -302,13 +306,13 @@ void QuantizeRoundtripYBlockAC(const float* JXL_RESTRICT qm,
   }
 }
 
-void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
-                  const DequantMatrices& matrices, const float scale,
-                  const float scale_dc, const uint32_t x_qm_scale,
-                  DCGroupData* dc_data, const EntropyCode& ac_code,
-                  Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer, EncoderTraceSink* trace) {
-  (void)trace;
+Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
+                    const DequantMatrices& matrices, const float scale,
+                    const float scale_dc, const uint32_t x_qm_scale,
+                    DCGroupData* dc_data, const EntropyCode& ac_code,
+                    Image3B* num_nzeros, GroupProcessorMemory* mem,
+                    BitWriter* writer, EncoderTraceSink* trace,
+                    const std::string& trace_prefix) {
   const size_t xsize_blocks = group_brect.xsize();
   const size_t ysize_blocks = group_brect.ysize();
 #if OPTIMIZE_CHROMA_FROM_LUMA
@@ -390,11 +394,17 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
       if (cy > cx) std::swap(cx, cy);
       const size_t covered_blocks = cx * cy;  // = #LLF coefficients
       const size_t size = kDCTBlockSize * covered_blocks;
+      std::vector<float> raw_coefficients;
+      if (trace != nullptr) raw_coefficients.resize(3 * size);
 
       // DCT Y channel, roundtrip-quantize it and set DC.
       const int32_t quant_ac = row_quant_ac[bx];
       TransformFromPixels(acs.Strategy(), opsin_rows[1] + bx * kBlockDim,
                           opsin_stride, coeffs_in + size, scratch_space);
+      if (trace != nullptr) {
+        std::copy(coeffs_in + size, coeffs_in + 2 * size,
+                  raw_coefficients.begin() + size);
+      }
       DCFromLowestFrequencies(acs.Strategy(), coeffs_in + size, tmp_dc,
                               tmp_dc_stride);
       for (size_t iy = 0; iy < acs.covered_blocks_y(); ++iy) {
@@ -413,6 +423,19 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
       for (size_t c : {0, 2}) {
         TransformFromPixels(acs.Strategy(), opsin_rows[c] + bx * kBlockDim,
                             opsin_stride, coeffs_in + c * size, scratch_space);
+        if (trace != nullptr) {
+          std::copy(coeffs_in + c * size, coeffs_in + (c + 1) * size,
+                    raw_coefficients.begin() + c * size);
+        }
+      }
+      std::string block_trace_name;
+      if (trace != nullptr) {
+        std::ostringstream name;
+        name << trace_prefix << "_block_y_" << by << "_x_" << bx;
+        block_trace_name = name.str();
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_raw_coefficients", "float32", {3, size},
+            raw_coefficients.data(), sizeof(float), "float_stage"));
       }
 
       // Unapply color correlation
@@ -424,6 +447,11 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
         const auto out_b = NegMulAdd(b_factor, in_y, in_b);
         Store(out_x, d, coeffs_in + k);
         Store(out_b, d, coeffs_in + 2 * size + k);
+      }
+      if (trace != nullptr) {
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_quant_input_coefficients", "float32",
+            {3, size}, coeffs_in, sizeof(float), "float_stage"));
       }
 
       // Quantize X and B channels and set DC.
@@ -441,8 +469,31 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
           }
         }
       }
+      if (trace != nullptr) {
+        std::vector<int16_t> dc_values(3 * acs.covered_blocks_y() *
+                                       acs.covered_blocks_x());
+        for (size_t c = 0; c < 3; ++c) {
+          for (size_t iy = 0; iy < acs.covered_blocks_y(); ++iy) {
+            for (size_t ix = 0; ix < acs.covered_blocks_x(); ++ix) {
+              const size_t pos =
+                  (c * acs.covered_blocks_y() + iy) *
+                      acs.covered_blocks_x() +
+                  ix;
+              dc_values[pos] = dc_rows[c][iy * dc_stride + bx + ix];
+            }
+          }
+        }
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_quantized_ac", "int32", {3, size}, quantized,
+            sizeof(int32_t), "exact"));
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_block_quant_dc", "int16",
+            {3, acs.covered_blocks_y(), acs.covered_blocks_x()},
+            dc_values.data(), sizeof(int16_t), "exact"));
+      }
 
       // Tokenize coefficients
+      int32_t token_nzeros[3] = {};
       size_t max_tokens = 3 * covered_blocks * kDCTBlockSize;
       BitWriter::Allotment allotment(writer, kMaxBitsPerToken * max_tokens);
       const size_t log2_covered_blocks =
@@ -456,6 +507,7 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
                 : NumNonZeroExceptLLF(cx, cy, acs, covered_blocks,
                                       log2_covered_blocks, block, nzeros_stride,
                                       row_nzeros[c] + bx);
+        token_nzeros[c] = nzeros;
 
         const coeff_order_t* JXL_RESTRICT order =
             &kCoeffOrders[kCoeffOrderOffset[acs.RawStrategy()]];
@@ -494,8 +546,31 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
         JXL_DASSERT(nzeros == 0);
       }
       allotment.Reclaim(writer);
+      if (trace != nullptr) {
+        std::vector<uint8_t> nzeros_map(3 * acs.covered_blocks_y() *
+                                        acs.covered_blocks_x());
+        for (size_t c = 0; c < 3; ++c) {
+          for (size_t iy = 0; iy < acs.covered_blocks_y(); ++iy) {
+            for (size_t ix = 0; ix < acs.covered_blocks_x(); ++ix) {
+              const size_t pos =
+                  (c * acs.covered_blocks_y() + iy) *
+                      acs.covered_blocks_x() +
+                  ix;
+              nzeros_map[pos] = row_nzeros[c][iy * nzeros_stride + bx + ix];
+            }
+          }
+        }
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_num_nonzeros", "int32", {3}, token_nzeros,
+            sizeof(int32_t), "exact"));
+        JXL_RETURN_IF_ERROR(trace->WriteArray(
+            block_trace_name + "_num_nonzeros_map", "uint8",
+            {3, acs.covered_blocks_y(), acs.covered_blocks_x()},
+            nzeros_map.data(), sizeof(uint8_t), "exact"));
+      }
     }
   }
+  return true;
 }
 
 // NOLINTNEXTLINE(google-readability-namespace-comments)
@@ -506,16 +581,17 @@ HWY_AFTER_NAMESPACE();
 #if HWY_ONCE
 namespace jxl {
 HWY_EXPORT(WriteACGroup);
-void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
-                  const DequantMatrices& matrices, const float scale,
-                  const float scale_dc, const uint32_t x_qm_scale,
-                  DCGroupData* dc_data, const EntropyCode& ac_code,
-                  Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer, EncoderTraceSink* trace) {
+Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
+                    const DequantMatrices& matrices, const float scale,
+                    const float scale_dc, const uint32_t x_qm_scale,
+                    DCGroupData* dc_data, const EntropyCode& ac_code,
+                    Image3B* num_nzeros, GroupProcessorMemory* mem,
+                    BitWriter* writer, EncoderTraceSink* trace,
+                    const std::string& trace_prefix) {
   return HWY_DYNAMIC_DISPATCH(WriteACGroup)(opsin, group_brect, matrices, scale,
                                             scale_dc, x_qm_scale, dc_data,
                                             ac_code, num_nzeros, mem, writer,
-                                            trace);
+                                            trace, trace_prefix);
 }
 }  // namespace jxl
 #endif  // HWY_ONCE

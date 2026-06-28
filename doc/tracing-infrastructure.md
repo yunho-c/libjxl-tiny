@@ -177,9 +177,15 @@ Recommended fine-grained trace points:
   when selecting a transform layout for a 16x16 region;
 * `ac_strategy_decision`: the selected 2x2 raw AC strategy encoding for a
   traced 16x16 region;
-* `dct_coefficients`: selected per-block transform coefficients;
+* `raw_coefficients`: selected per-block transform coefficients before
+  roundtrip quantization and chroma-from-luma removal;
+* `quant_input_coefficients`: per-block transform coefficients after
+  Y roundtrip quantization and chroma-from-luma removal, immediately before
+  X/B quantization;
 * `quantized_ac`: quantized AC coefficients after chroma-from-luma removal;
-* `num_nonzeros`: nonzero counts used for AC contexts;
+* `block_quant_dc`: block-local quantized DC coefficients derived while
+  quantizing AC groups;
+* `num_nonzeros` and `num_nonzeros_map`: nonzero counts used for AC contexts;
 * `dc_tokens`: DC token stream before entropy coding;
 * `ac_tokens`: AC token stream before entropy coding.
 
@@ -247,9 +253,9 @@ pipeline errors.
 Add detailed traces for the hardest numerical stages:
 
 * AC strategy candidate entropies, candidate costs, and selected 2x2 decision;
-* transform coefficients before quantization;
-* quantized AC coefficients;
-* nonzero counts;
+* transform coefficients before quantization, quantization-input coefficients,
+  quantized AC coefficients, block-local quantized DC values, and nonzero
+  counts;
 * AC/DC tokens before entropy coding.
 
 Use these only for small fixtures by default. They are mainly for debugging
