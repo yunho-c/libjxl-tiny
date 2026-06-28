@@ -14,10 +14,13 @@
 
 namespace jxl {
 
+class EncoderTraceSink;
+
 // Encodes a single frame (including its header) into a byte stream.
 // Groups may be processed in parallel by `pool`.
 Status EncodeFrame(const float distance, const Image3F& linear,
-                   ThreadPool* pool, BitWriter* writer);
+                   ThreadPool* pool, BitWriter* writer,
+                   EncoderTraceSink* trace = nullptr);
 
 }  // namespace jxl
 

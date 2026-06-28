@@ -23,6 +23,7 @@ add_library(jxl_tiny STATIC EXCLUDE_FROM_ALL
   image.cc
   quant_weights.cc
   read_pfm.cc
+  trace.cc
 )
 target_compile_options(jxl_tiny PUBLIC "${JPEGXL_INTERNAL_FLAGS}")
 target_include_directories(jxl_tiny PUBLIC "${PROJECT_SOURCE_DIR}")
@@ -31,3 +32,6 @@ target_link_libraries(jxl_tiny hwy pthread)
 
 add_executable(cjxl_tiny cjxl_main.cc)
 target_link_libraries(cjxl_tiny jxl_tiny)
+
+add_executable(jxl_tiny_trace jxl_tiny_trace_main.cc)
+target_link_libraries(jxl_tiny_trace jxl_tiny)

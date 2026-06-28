@@ -15,10 +15,13 @@
 
 namespace jxl {
 
+class EncoderTraceSink;
+
 // Input is in linear sRGB colorspace, individual sample values can be outside
 // the [0.0, 1.0] range for out-of-gammut colors.
 bool EncodeFile(const Image3F& input, float distance,
-                std::vector<uint8_t>* output);
+                std::vector<uint8_t>* output,
+                EncoderTraceSink* trace = nullptr);
 
 }  // namespace jxl
 

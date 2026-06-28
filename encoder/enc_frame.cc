@@ -41,6 +41,7 @@
 #include "encoder/image.h"
 #include "encoder/quant_weights.h"
 #include "encoder/static_entropy_codes.h"
+#include "encoder/trace.h"
 
 namespace jxl {
 namespace {
@@ -816,7 +817,9 @@ void CombineSections(std::vector<BitWriter>* sections, BitWriter* writer) {
 }  // namespace
 
 Status EncodeFrame(const float distance, const Image3F& linear,
-                   ThreadPool* pool, BitWriter* writer) {
+                   ThreadPool* pool, BitWriter* writer,
+                   EncoderTraceSink* trace) {
+  (void)trace;
   // Pre-compute image dimension-derived values.
   ImageDim dim(linear.xsize(), linear.ysize());
 

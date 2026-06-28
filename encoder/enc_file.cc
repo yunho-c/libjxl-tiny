@@ -15,6 +15,7 @@
 #include "encoder/enc_bit_writer.h"
 #include "encoder/enc_frame.h"
 #include "encoder/image.h"
+#include "encoder/trace.h"
 
 namespace jxl {
 
@@ -53,7 +54,7 @@ Status WriteSizeHeader(size_t xsize64, size_t ysize64, BitWriter* writer) {
 }  // namespace
 
 bool EncodeFile(const Image3F& input, float distance,
-                std::vector<uint8_t>* output) {
+                std::vector<uint8_t>* output, EncoderTraceSink* trace) {
   if (distance < 0.0) {
     return JXL_FAILURE("Invalid butteraugli distance (%f)", distance);
   } else if (distance == 0.0) {
@@ -65,6 +66,13 @@ bool EncodeFile(const Image3F& input, float distance,
   }
   if (input.xsize() == 0 || input.ysize() == 0) {
     return JXL_FAILURE("Empty image");
+  }
+  if (trace != nullptr) {
+    TraceImageInfo image_info;
+    image_info.xsize = input.xsize();
+    image_info.ysize = input.ysize();
+    image_info.distance = distance;
+    JXL_RETURN_IF_ERROR(trace->BeginImage(image_info));
   }
 
   BitWriter writer;
@@ -95,11 +103,15 @@ bool EncodeFile(const Image3F& input, float distance,
   allotment.Reclaim(&writer);
 
   ThreadPool pool;
-  JXL_RETURN_IF_ERROR(EncodeFrame(distance, input, &pool, &writer));
+  JXL_RETURN_IF_ERROR(EncodeFrame(distance, input, &pool, &writer, trace));
 
   PaddedBytes compressed;
   compressed = std::move(writer).TakeBytes();
   output->assign(compressed.data(), compressed.data() + compressed.size());
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(
+        trace->WriteBytes("codestream", output->data(), output->size()));
+  }
 
   return true;
 }
