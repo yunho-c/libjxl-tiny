@@ -393,4 +393,10 @@ Status TraceAcStrategy(EncoderTraceSink* trace, const std::string& name,
                            data.data(), sizeof(uint8_t), "exact");
 }
 
+Status TraceScalarSB(EncoderTraceSink* trace, const std::string& name,
+                     int8_t value) {
+  if (trace == nullptr) return true;
+  return trace->WriteArray(name, "int8", {1}, &value, sizeof(int8_t), "exact");
+}
+
 }  // namespace jxl

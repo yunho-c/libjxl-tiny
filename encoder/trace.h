@@ -62,6 +62,8 @@ Status TraceImageBRect(EncoderTraceSink* trace, const std::string& name,
                        const ImageB& image, Rect rect);
 Status TraceAcStrategy(EncoderTraceSink* trace, const std::string& name,
                        const AcStrategyImage& ac_strategy);
+Status TraceScalarSB(EncoderTraceSink* trace, const std::string& name,
+                     int8_t value);
 
 }  // namespace jxl
 

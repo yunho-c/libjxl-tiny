@@ -682,6 +682,15 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
                                 distp.inv_scale, &tmem->pre_erosion,
                                 tmem->diff_buffer.Row(0), &tmem->quant_field,
                                 &tmem->masking, &dc_data->raw_quant_field);
+  Rect tile_rect(0, 0, tile_brect.xsize(), tile_brect.ysize());
+  Rect raw_quant_rect(group_brect.x0() + tile_brect.x0(),
+                      group_brect.y0() + tile_brect.y0(), tile_brect.xsize(),
+                      tile_brect.ysize());
+  JXL_RETURN_IF_ERROR(TraceImageBRect(
+      trace,
+      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                    "raw_quant_field_pre_adjust"),
+      dc_data->raw_quant_field, raw_quant_rect));
   int8_t ytox = 0, ytob = 0;
   (void)ytox;
   (void)ytob;
@@ -689,6 +698,12 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
   ComputeCmapTile(group, tile_brect, matrices, &ytox, &ytob,
                   tmem->block_storage(), tmem->scratch_space(),
                   tmem->coeff_storage());
+  JXL_RETURN_IF_ERROR(TraceScalarSB(
+      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytox"),
+      ytox));
+  JXL_RETURN_IF_ERROR(TraceScalarSB(
+      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytob"),
+      ytob));
   const size_t tx = tile_brect.x0() / kTileDimInBlocks;
   const size_t ty = tile_brect.y0() / kTileDimInBlocks;
   group_trect.Row(&dc_data->ytox_map, ty)[tx] = ytox;
@@ -709,10 +724,11 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
             tile_brect.ysize());
   AdjustQuantField(dc_data->ac_strategy, rect, &dc_data->raw_quant_field);
 #endif
-  Rect tile_rect(0, 0, tile_brect.xsize(), tile_brect.ysize());
-  Rect raw_quant_rect(group_brect.x0() + tile_brect.x0(),
-                      group_brect.y0() + tile_brect.y0(), tile_brect.xsize(),
-                      tile_brect.ysize());
+  JXL_RETURN_IF_ERROR(TraceImageBRect(
+      trace,
+      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                    "raw_quant_field_post_adjust"),
+      dc_data->raw_quant_field, raw_quant_rect));
   JXL_RETURN_IF_ERROR(TraceImageFRect(
       trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "aq_map"),
       tmem->quant_field, tile_rect, "float_stage"));

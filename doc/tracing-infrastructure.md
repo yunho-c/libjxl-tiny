@@ -156,7 +156,14 @@ Recommended coarse trace points:
 * `xyb`: RGB-to-XYB output;
 * `aq_map`: floating adaptive quantization map for a tile;
 * `mask`: masking values used by AC strategy selection;
-* `raw_quant_field`: quantized per-block AC quantization values;
+* `raw_quant_field_pre_adjust`: quantized per-block AC quantization values
+  before AC strategy adjustment;
+* `raw_quant_field_post_adjust`: quantized per-block AC quantization values
+  after AC strategy adjustment;
+* `raw_quant_field`: compatibility alias for the post-adjusted quantization
+  field;
+* tile-local `ytox` and `ytob`: chroma-from-luma multipliers before storage
+  in the DC-group maps;
 * `ytox_map` and `ytob_map`: chroma-from-luma tile multipliers;
 * `ac_strategy`: raw per-block AC strategy representation;
 * `quant_dc`: quantized DC image;

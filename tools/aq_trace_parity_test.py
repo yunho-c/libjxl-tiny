@@ -26,6 +26,7 @@ from trace_test_utils import (
 
 import pfm_tools
 from jxl_tiny import (
+    adjust_quant_field,
     compute_adaptive_quantization,
     copy_and_pad_image,
     read_pfm,
@@ -73,6 +74,47 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
       result.mask,
       atol=args.mask_atol,
       rtol=args.mask_rtol,
+  )
+  assert_close(
+      "raw_quant_field_pre_adjust",
+      load_artifact(trace_dir, manifest, "raw_quant_field_pre_adjust"),
+      result.raw_quant_field,
+      atol=0,
+      rtol=0,
+  )
+  adjusted_raw_quant_field = adjust_quant_field(
+      result.raw_quant_field,
+      load_artifact(trace_dir, manifest, "ac_strategy"),
+  )
+  assert_close(
+      "raw_quant_field_post_adjust",
+      load_artifact(trace_dir, manifest, "raw_quant_field_post_adjust"),
+      adjusted_raw_quant_field,
+      atol=0,
+      rtol=0,
+  )
+  assert_close(
+      "raw_quant_field",
+      load_artifact(trace_dir, manifest, "raw_quant_field"),
+      adjusted_raw_quant_field,
+      atol=0,
+      rtol=0,
+  )
+  ytox = load_artifact(trace_dir, manifest, "ytox")
+  ytob = load_artifact(trace_dir, manifest, "ytob")
+  assert_close(
+      "ytox_map",
+      load_artifact(trace_dir, manifest, "ytox_map"),
+      ytox.reshape((1, 1)),
+      atol=0,
+      rtol=0,
+  )
+  assert_close(
+      "ytob_map",
+      load_artifact(trace_dir, manifest, "ytob_map"),
+      ytob.reshape((1, 1)),
+      atol=0,
+      rtol=0,
   )
 
   print(f"aq trace parity test passed: {trace_dir}")
