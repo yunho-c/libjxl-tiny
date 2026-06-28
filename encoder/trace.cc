@@ -283,4 +283,114 @@ std::unique_ptr<EncoderTraceSink> CreateFileTraceSink(const char* trace_dir) {
   return std::unique_ptr<EncoderTraceSink>(new FileTraceSink(trace_dir));
 }
 
+Status TraceImage3F(EncoderTraceSink* trace, const std::string& name,
+                    const Image3F& image, const std::string& tolerance) {
+  if (trace == nullptr) return true;
+  std::vector<float> data(3 * image.ysize() * image.xsize());
+  size_t pos = 0;
+  for (size_t c = 0; c < 3; ++c) {
+    for (size_t y = 0; y < image.ysize(); ++y) {
+      const float* row = image.ConstPlaneRow(c, y);
+      for (size_t x = 0; x < image.xsize(); ++x) {
+        data[pos++] = row[x];
+      }
+    }
+  }
+  return trace->WriteArray(name, "float32",
+                           {3, image.ysize(), image.xsize()}, data.data(),
+                           sizeof(float), tolerance);
+}
+
+Status TraceImage3S(EncoderTraceSink* trace, const std::string& name,
+                    const Image3S& image) {
+  if (trace == nullptr) return true;
+  std::vector<int16_t> data(3 * image.ysize() * image.xsize());
+  size_t pos = 0;
+  for (size_t c = 0; c < 3; ++c) {
+    for (size_t y = 0; y < image.ysize(); ++y) {
+      const int16_t* row = image.ConstPlaneRow(c, y);
+      for (size_t x = 0; x < image.xsize(); ++x) {
+        data[pos++] = row[x];
+      }
+    }
+  }
+  return trace->WriteArray(name, "int16", {3, image.ysize(), image.xsize()},
+                           data.data(), sizeof(int16_t), "exact");
+}
+
+Status TraceImageF(EncoderTraceSink* trace, const std::string& name,
+                   const ImageF& image, const std::string& tolerance) {
+  if (trace == nullptr) return true;
+  return TraceImageFRect(trace, name, image, Rect(image), tolerance);
+}
+
+Status TraceImageFRect(EncoderTraceSink* trace, const std::string& name,
+                       const ImageF& image, Rect rect,
+                       const std::string& tolerance) {
+  if (trace == nullptr) return true;
+  std::vector<float> data(rect.ysize() * rect.xsize());
+  size_t pos = 0;
+  for (size_t y = 0; y < rect.ysize(); ++y) {
+    const float* row = rect.ConstRow(image, y);
+    for (size_t x = 0; x < rect.xsize(); ++x) {
+      data[pos++] = row[x];
+    }
+  }
+  return trace->WriteArray(name, "float32", {rect.ysize(), rect.xsize()},
+                           data.data(), sizeof(float), tolerance);
+}
+
+Status TraceImageB(EncoderTraceSink* trace, const std::string& name,
+                   const ImageB& image) {
+  if (trace == nullptr) return true;
+  return TraceImageBRect(trace, name, image, Rect(image));
+}
+
+Status TraceImageSB(EncoderTraceSink* trace, const std::string& name,
+                    const ImageSB& image) {
+  if (trace == nullptr) return true;
+  std::vector<int8_t> data(image.ysize() * image.xsize());
+  size_t pos = 0;
+  for (size_t y = 0; y < image.ysize(); ++y) {
+    const int8_t* row = image.ConstRow(y);
+    for (size_t x = 0; x < image.xsize(); ++x) {
+      data[pos++] = row[x];
+    }
+  }
+  return trace->WriteArray(name, "int8", {image.ysize(), image.xsize()},
+                           data.data(), sizeof(int8_t), "exact");
+}
+
+Status TraceImageBRect(EncoderTraceSink* trace, const std::string& name,
+                       const ImageB& image, Rect rect) {
+  if (trace == nullptr) return true;
+  std::vector<uint8_t> data(rect.ysize() * rect.xsize());
+  size_t pos = 0;
+  for (size_t y = 0; y < rect.ysize(); ++y) {
+    const uint8_t* row = rect.ConstRow(image, y);
+    for (size_t x = 0; x < rect.xsize(); ++x) {
+      data[pos++] = row[x];
+    }
+  }
+  return trace->WriteArray(name, "uint8", {rect.ysize(), rect.xsize()},
+                           data.data(), sizeof(uint8_t), "exact");
+}
+
+Status TraceAcStrategy(EncoderTraceSink* trace, const std::string& name,
+                       const AcStrategyImage& ac_strategy) {
+  if (trace == nullptr) return true;
+  std::vector<uint8_t> data(ac_strategy.ysize() * ac_strategy.xsize());
+  size_t pos = 0;
+  for (size_t y = 0; y < ac_strategy.ysize(); ++y) {
+    AcStrategyRow row = ac_strategy.ConstRow(y);
+    for (size_t x = 0; x < ac_strategy.xsize(); ++x) {
+      const AcStrategy acs = row[x];
+      data[pos++] = (acs.RawStrategy() << 1) | (acs.IsFirstBlock() ? 1 : 0);
+    }
+  }
+  return trace->WriteArray(name, "uint8",
+                           {ac_strategy.ysize(), ac_strategy.xsize()},
+                           data.data(), sizeof(uint8_t), "exact");
+}
+
 }  // namespace jxl

@@ -16,6 +16,8 @@
 #include <limits>
 #include <numeric>
 #include <queue>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "encoder/ac_context.h"
@@ -646,10 +648,36 @@ struct TileProcessorMemory {
 #endif
 };
 
-void ProcessTile(const Image3F& group, const Rect& tile_brect,
-                 const Rect& group_brect, const Rect& group_trect,
-                 const DistanceParams& distp, const DequantMatrices& matrices,
-                 DCGroupData* dc_data, TileProcessorMemory* tmem) {
+std::string TraceStripeName(size_t dc_group_id, size_t ac_group_id,
+                            size_t stripe_y, const char* stage) {
+  std::ostringstream name;
+  name << "dcg_" << dc_group_id << "_acg_" << ac_group_id << "_stripe_"
+       << stripe_y << "_" << stage;
+  return name.str();
+}
+
+std::string TraceTileName(size_t dc_group_id, size_t ac_group_id,
+                          size_t stripe_y, size_t tile_x,
+                          const char* stage) {
+  std::ostringstream name;
+  name << "dcg_" << dc_group_id << "_acg_" << ac_group_id << "_stripe_"
+       << stripe_y << "_tile_" << tile_x << "_" << stage;
+  return name.str();
+}
+
+std::string TraceDCGroupName(size_t dc_group_id, const char* stage) {
+  std::ostringstream name;
+  name << "dcg_" << dc_group_id << "_" << stage;
+  return name.str();
+}
+
+Status ProcessTile(const Image3F& group, const Rect& tile_brect,
+                   const Rect& group_brect, const Rect& group_trect,
+                   const DistanceParams& distp,
+                   const DequantMatrices& matrices, size_t dc_group_id,
+                   size_t ac_group_id, size_t stripe_y, size_t tile_x,
+                   DCGroupData* dc_data, TileProcessorMemory* tmem,
+                   EncoderTraceSink* trace) {
   ComputeAdaptiveQuantFieldTile(group, tile_brect, group_brect, distp.distance,
                                 distp.inv_scale, &tmem->pre_erosion,
                                 tmem->diff_buffer.Row(0), &tmem->quant_field,
@@ -681,15 +709,33 @@ void ProcessTile(const Image3F& group, const Rect& tile_brect,
             tile_brect.ysize());
   AdjustQuantField(dc_data->ac_strategy, rect, &dc_data->raw_quant_field);
 #endif
+  Rect tile_rect(0, 0, tile_brect.xsize(), tile_brect.ysize());
+  Rect raw_quant_rect(group_brect.x0() + tile_brect.x0(),
+                      group_brect.y0() + tile_brect.y0(), tile_brect.xsize(),
+                      tile_brect.ysize());
+  JXL_RETURN_IF_ERROR(TraceImageFRect(
+      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "aq_map"),
+      tmem->quant_field, tile_rect, "float_stage"));
+  JXL_RETURN_IF_ERROR(TraceImageFRect(
+      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "mask"),
+      tmem->masking, tile_rect, "float_stage"));
+  JXL_RETURN_IF_ERROR(TraceImageBRect(
+      trace,
+      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                    "raw_quant_field"),
+      dc_data->raw_quant_field, raw_quant_rect));
+  return true;
 }
 
 Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
                       const DistanceParams& distp,
                       const DequantMatrices& matrices,
                       const EntropyCode& dc_code, const EntropyCode& ac_code,
-                      ThreadPool* pool, std::vector<BitWriter>* output) {
+                      ThreadPool* pool, std::vector<BitWriter>* output,
+                      EncoderTraceSink* trace) {
   // Dimensions of the whole image.
   ImageDim dim(linear.xsize(), linear.ysize());
+  const size_t dc_group_id = dc_gy * dim.xsize_dc_groups + dc_gx;
   // Rectangle of the current DC group within the image.
   Rect dc_group_rect = dim.PixelRect(dc_gx, dc_gy, kDCGroupDim);
   // Dimensions of the current DC group.
@@ -719,8 +765,9 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
     size_t gy = gix / dc_group_dim.xsize_groups;
     size_t image_gx = dc_gx * kBlockDim + gx;
     size_t image_gy = dc_gy * kBlockDim + gy;
+    const size_t ac_group_id = image_gy * dim.xsize_groups + image_gx;
     const size_t ac_group_idx =
-        2 + dim.num_dc_groups + image_gy * dim.xsize_groups + image_gx;
+        2 + dim.num_dc_groups + ac_group_id;
     // Rectangle of the current AC group within the image.
     Rect group_rect = dim.PixelRect(image_gx, image_gy, kGroupDim);
     // Dimensions of the current AC group.
@@ -741,21 +788,39 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
       Rect stripe_trect = dc_group_dim.TileRect(gx, dc_ty, kGroupDimInTiles, 1);
       // Convert current AC stripe to XYB, pad to whole blocks if necessary.
       CopyAndPadImage(linear, stripe_rect, &stripe);
+      JXL_RETURN_IF_ERROR(TraceImage3F(
+          trace, TraceStripeName(dc_group_id, ac_group_id, ty, "input_padded"),
+          stripe, "float_stage"));
       ToXYB(&stripe);
+      JXL_RETURN_IF_ERROR(TraceImage3F(
+          trace, TraceStripeName(dc_group_id, ac_group_id, ty, "xyb"), stripe,
+          "float_stage"));
       // Compute heuristics data one kTileDim x kTileDim tile at a time. These
       // can be done in parallel.
       for (size_t tx = 0; tx < group_dim.xsize_tiles; ++tx) {
         // Block-rectangle of the current tile within the AC stripe.
         Rect tile_brect = stripe_dim.BlockRect(tx, 0, kTileDimInBlocks);
-        ProcessTile(stripe, tile_brect, stripe_brect, stripe_trect, distp,
-                    matrices, &dc_data, &tmem);
+        JXL_RETURN_IF_ERROR(ProcessTile(stripe, tile_brect, stripe_brect,
+                                        stripe_trect, distp, matrices,
+                                        dc_group_id, ac_group_id, ty, tx,
+                                        &dc_data, &tmem, trace));
       }
       // Write AC stripe to bitstream and fill in dc_data->quant_dc.
       WriteACGroup(stripe, stripe_brect, matrices, distp.scale, distp.scale_dc,
                    distp.x_qm_scale, &dc_data, ac_code, &num_nzeros, &gmem,
-                   &(*output)[ac_group_idx]);
+                   &(*output)[ac_group_idx], trace);
     }
   }
+
+  JXL_RETURN_IF_ERROR(TraceImageSB(
+      trace, TraceDCGroupName(dc_group_id, "ytox_map"), dc_data.ytox_map));
+  JXL_RETURN_IF_ERROR(TraceImageSB(
+      trace, TraceDCGroupName(dc_group_id, "ytob_map"), dc_data.ytob_map));
+  JXL_RETURN_IF_ERROR(TraceAcStrategy(
+      trace, TraceDCGroupName(dc_group_id, "ac_strategy"),
+      dc_data.ac_strategy));
+  JXL_RETURN_IF_ERROR(TraceImage3S(
+      trace, TraceDCGroupName(dc_group_id, "quant_dc"), dc_data.quant_dc));
 
   // Write DC group to bitstream.
   const size_t dc_group_idx = 1 + dc_gy * dim.xsize_dc_groups + dc_gx;
@@ -843,7 +908,8 @@ Status EncodeFrame(const float distance, const Image3F& linear,
     size_t dc_gx = i % dim.xsize_dc_groups;
     size_t dc_gy = i / dim.xsize_dc_groups;
     JXL_RETURN_IF_ERROR(ProcessDCGroup(linear, dc_gx, dc_gy, distp, matrices,
-                                       dc_code, ac_code, pool, &sections));
+                                       dc_code, ac_code, pool, &sections,
+                                       trace));
   }
 
 #if OPTIMIZE_CODE

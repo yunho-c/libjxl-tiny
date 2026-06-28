@@ -18,6 +18,8 @@
 
 namespace jxl {
 
+class EncoderTraceSink;
+
 struct GroupProcessorMemory {
   GroupProcessorMemory() {
     mem_dct = hwy::AllocateAligned<float>(kMaxCoeffArea * 4);
@@ -35,7 +37,7 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
                   const float scale_dc, const uint32_t x_qm_scale,
                   DCGroupData* dc_data, const EntropyCode& ac_code,
                   Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer);
+                  BitWriter* writer, EncoderTraceSink* trace);
 
 }  // namespace jxl
 

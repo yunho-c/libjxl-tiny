@@ -25,6 +25,7 @@
 #include "encoder/enc_entropy_code.h"
 #include "encoder/enc_transforms-inl.h"
 #include "encoder/image.h"
+#include "encoder/trace.h"
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
 namespace HWY_NAMESPACE {
@@ -306,7 +307,8 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
                   const float scale_dc, const uint32_t x_qm_scale,
                   DCGroupData* dc_data, const EntropyCode& ac_code,
                   Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer) {
+                  BitWriter* writer, EncoderTraceSink* trace) {
+  (void)trace;
   const size_t xsize_blocks = group_brect.xsize();
   const size_t ysize_blocks = group_brect.ysize();
 #if OPTIMIZE_CHROMA_FROM_LUMA
@@ -509,10 +511,11 @@ void WriteACGroup(const Image3F& opsin, const Rect& group_brect,
                   const float scale_dc, const uint32_t x_qm_scale,
                   DCGroupData* dc_data, const EntropyCode& ac_code,
                   Image3B* num_nzeros, GroupProcessorMemory* mem,
-                  BitWriter* writer) {
+                  BitWriter* writer, EncoderTraceSink* trace) {
   return HWY_DYNAMIC_DISPATCH(WriteACGroup)(opsin, group_brect, matrices, scale,
                                             scale_dc, x_qm_scale, dc_data,
-                                            ac_code, num_nzeros, mem, writer);
+                                            ac_code, num_nzeros, mem, writer,
+                                            trace);
 }
 }  // namespace jxl
 #endif  // HWY_ONCE

@@ -14,7 +14,9 @@
 #include <string>
 #include <vector>
 
+#include "encoder/ac_strategy.h"
 #include "encoder/base/status.h"
+#include "encoder/image.h"
 
 namespace jxl {
 
@@ -42,6 +44,24 @@ class EncoderTraceSink {
 };
 
 std::unique_ptr<EncoderTraceSink> CreateFileTraceSink(const char* trace_dir);
+
+Status TraceImage3F(EncoderTraceSink* trace, const std::string& name,
+                    const Image3F& image, const std::string& tolerance);
+Status TraceImage3S(EncoderTraceSink* trace, const std::string& name,
+                    const Image3S& image);
+Status TraceImageF(EncoderTraceSink* trace, const std::string& name,
+                   const ImageF& image, const std::string& tolerance);
+Status TraceImageFRect(EncoderTraceSink* trace, const std::string& name,
+                       const ImageF& image, Rect rect,
+                       const std::string& tolerance);
+Status TraceImageB(EncoderTraceSink* trace, const std::string& name,
+                   const ImageB& image);
+Status TraceImageSB(EncoderTraceSink* trace, const std::string& name,
+                    const ImageSB& image);
+Status TraceImageBRect(EncoderTraceSink* trace, const std::string& name,
+                       const ImageB& image, Rect rect);
+Status TraceAcStrategy(EncoderTraceSink* trace, const std::string& name,
+                       const AcStrategyImage& ac_strategy);
 
 }  // namespace jxl
 
