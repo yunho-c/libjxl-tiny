@@ -17,6 +17,8 @@ import subprocess
 import sys
 import tempfile
 
+import numpy as np
+
 from trace_test_utils import (
     assert_close,
     load_artifact,
@@ -28,6 +30,7 @@ import pfm_tools
 from jxl_tiny import (
     adjust_quant_field,
     compute_adaptive_quantization,
+    compute_chroma_from_luma,
     copy_and_pad_image,
     read_pfm,
     to_xyb,
@@ -102,6 +105,21 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   )
   ytox = load_artifact(trace_dir, manifest, "ytox")
   ytob = load_artifact(trace_dir, manifest, "ytob")
+  cfl = compute_chroma_from_luma(xyb)
+  assert_close(
+      "ytox",
+      ytox,
+      np.asarray([cfl.ytox], dtype=np.int8),
+      atol=0,
+      rtol=0,
+  )
+  assert_close(
+      "ytob",
+      ytob,
+      np.asarray([cfl.ytob], dtype=np.int8),
+      atol=0,
+      rtol=0,
+  )
   assert_close(
       "ytox_map",
       load_artifact(trace_dir, manifest, "ytox_map"),
