@@ -6,7 +6,7 @@
 # license that can be found in the LICENSE file or at
 # https://developers.google.com/open-source/licenses/bsd
 
-"""Check Python padding and XYB helpers against jxl_tiny_trace artifacts."""
+"""Check Python adaptive quantization helpers against jxl_tiny_trace."""
 
 from __future__ import annotations
 
@@ -25,7 +25,12 @@ from trace_test_utils import (
 )
 
 import pfm_tools
-from jxl_tiny import copy_and_pad_image, read_pfm, to_xyb
+from jxl_tiny import (
+    compute_adaptive_quantization,
+    copy_and_pad_image,
+    read_pfm,
+    to_xyb,
+)
 
 
 def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
@@ -42,7 +47,6 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
       args.height,
       pfm_tools.generate_pixels(args.pattern, args.width, args.height),
   )
-
   subprocess.run(
       [trace, str(source), str(trace_dir), "-d", str(args.distance)],
       check=True,
@@ -53,17 +57,25 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   if image != {"xsize": args.width, "ysize": args.height}:
     raise RuntimeError(f"unexpected image metadata: {image}")
 
-  rgb = read_pfm(source)
-  padded = copy_and_pad_image(rgb)
-  traced_padded = load_artifact(trace_dir, manifest, "input_padded")
-  traced_xyb = load_artifact(trace_dir, manifest, "xyb")
+  xyb = to_xyb(copy_and_pad_image(read_pfm(source)))
+  result = compute_adaptive_quantization(xyb, args.distance)
 
-  assert_close("input_padded", traced_padded, padded, atol=0.0, rtol=0.0)
   assert_close(
-      "xyb", traced_xyb, to_xyb(padded), atol=args.xyb_atol,
-      rtol=args.xyb_rtol)
+      "aq_map",
+      load_artifact(trace_dir, manifest, "aq_map"),
+      result.aq_map,
+      atol=args.aq_atol,
+      rtol=args.aq_rtol,
+  )
+  assert_close(
+      "mask",
+      load_artifact(trace_dir, manifest, "mask"),
+      result.mask,
+      atol=args.mask_atol,
+      rtol=args.mask_rtol,
+  )
 
-  print(f"xyb trace parity test passed: {trace_dir}")
+  print(f"aq trace parity test passed: {trace_dir}")
 
 
 def main(argv: list[str]) -> int:
@@ -75,18 +87,20 @@ def main(argv: list[str]) -> int:
   parser.add_argument("--distance", type=float, default=1.0)
   parser.add_argument(
       "--pattern", choices=("gradient", "checker", "rings"), default="gradient")
-  parser.add_argument("--xyb-atol", type=float, default=2e-5)
-  parser.add_argument("--xyb-rtol", type=float, default=2e-5)
+  parser.add_argument("--aq-atol", type=float, default=5e-4)
+  parser.add_argument("--aq-rtol", type=float, default=5e-4)
+  parser.add_argument("--mask-atol", type=float, default=5e-4)
+  parser.add_argument("--mask-rtol", type=float, default=5e-4)
   args = parser.parse_args(argv)
 
   try:
     if args.work_dir is not None:
       run_parity(args, args.work_dir)
     else:
-      with tempfile.TemporaryDirectory(prefix="libjxl-tiny-xyb-") as work_dir:
+      with tempfile.TemporaryDirectory(prefix="libjxl-tiny-aq-") as work_dir:
         run_parity(args, Path(work_dir))
   except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
-    print(f"xyb trace parity test failed: {exc}", file=sys.stderr)
+    print(f"aq trace parity test failed: {exc}", file=sys.stderr)
     return 1
   return 0
 
