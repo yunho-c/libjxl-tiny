@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from .ac_strategy import DCT, adjust_quant_field, find_best_16x16_transform
 from .adaptive_quantization import compute_adaptive_quantization
-from .bitstream import codestream_bytes_from_ac_groups
+from .bitstream import codestream_bytes_from_groups
 from .chroma_from_luma import compute_chroma_from_luma
 from .image import copy_and_pad_image
 from .quantization import QuantizedBlock, quantize_ac_group
@@ -23,17 +25,23 @@ TILE_DIM_IN_BLOCKS = TILE_DIM // BLOCK_DIM
 GROUP_DIM_IN_TILES = GROUP_DIM // TILE_DIM
 
 
+@dataclass(frozen=True)
+class _DcGroupEncoding:
+    dc_tokens: np.ndarray
+    ac_metadata_tokens: np.ndarray
+    ac_strategy: np.ndarray
+    ac_token_groups: list[np.ndarray]
+
+
 def _ceil_div(value: int, divisor: int) -> int:
     return (value + divisor - 1) // divisor
 
 
-def _validate_single_dc_group_image(image: np.ndarray, distance: float) -> None:
+def _validate_image(image: np.ndarray, distance: float) -> None:
     if image.ndim != 3 or image.shape[0] != 3:
         raise ValueError("expected channel-first RGB image with shape (3, y, x)")
     if image.shape[1] <= 0 or image.shape[2] <= 0:
         raise ValueError("image dimensions must be nonzero")
-    if image.shape[1] > DC_GROUP_DIM or image.shape[2] > DC_GROUP_DIM:
-        raise ValueError("encode_from_image currently supports one DC group only")
     if distance <= 0.0:
         raise ValueError("lossless compression is not supported")
 
@@ -136,18 +144,7 @@ def _copy_into_global(
     global_array[..., y0 : y0 + ysize, x0 : x0 + xsize] = local_array
 
 
-def encode_from_image(image: np.ndarray, distance: float = 1.0) -> bytes:
-    """Encode one RGB image to a JPEG XL codestream with libjxl-tiny behavior.
-
-    This educational entrypoint intentionally starts with one DC group. Images
-    may span multiple AC groups, but must fit within the 2048x2048 DC-group
-    extent used by libjxl-tiny. The input must be channel-first linear RGB float
-    data with shape `(3, y, x)`.
-    """
-    rgb = np.asarray(image, dtype=np.float32)
-    _validate_single_dc_group_image(rgb, distance)
-    distance = _effective_distance(float(distance))
-
+def _encode_dc_group(rgb: np.ndarray, distance: float) -> _DcGroupEncoding:
     _, ysize, xsize = rgb.shape
     x_blocks = _ceil_div(xsize, BLOCK_DIM)
     y_blocks = _ceil_div(ysize, BLOCK_DIM)
@@ -193,12 +190,70 @@ def encode_from_image(image: np.ndarray, distance: float = 1.0) -> bytes:
             _copy_into_global(ytob_map, group_ytob, group_ty0, group_tx0)
             _copy_into_global(quant_dc, group_quant_dc, group_by0, group_bx0)
 
-    return codestream_bytes_from_ac_groups(
+    return _DcGroupEncoding(
+        dc_tokens=dc_tokens(quant_dc),
+        ac_metadata_tokens=ac_metadata_tokens(
+            ytox_map, ytob_map, ac_strategy, raw_quant_field
+        ),
+        ac_strategy=ac_strategy,
+        ac_token_groups=ac_token_groups,
+    )
+
+
+def encode_from_image(image: np.ndarray, distance: float = 1.0) -> bytes:
+    """Encode one RGB image to a JPEG XL codestream with libjxl-tiny behavior.
+
+    The input must be channel-first linear RGB float data with shape `(3, y, x)`.
+    """
+    rgb = np.asarray(image, dtype=np.float32)
+    _validate_image(rgb, distance)
+    distance = _effective_distance(float(distance))
+
+    _, ysize, xsize = rgb.shape
+    x_dc_groups = _ceil_div(xsize, DC_GROUP_DIM)
+    y_dc_groups = _ceil_div(ysize, DC_GROUP_DIM)
+    x_ac_groups = _ceil_div(xsize, GROUP_DIM)
+    y_ac_groups = _ceil_div(ysize, GROUP_DIM)
+    dc_group_encodings: list[_DcGroupEncoding] = []
+    ac_token_groups: list[np.ndarray | None] = [None] * (x_ac_groups * y_ac_groups)
+
+    for dc_group_y in range(y_dc_groups):
+        dc_py0 = dc_group_y * DC_GROUP_DIM
+        dc_height = min(DC_GROUP_DIM, ysize - dc_py0)
+        for dc_group_x in range(x_dc_groups):
+            dc_px0 = dc_group_x * DC_GROUP_DIM
+            dc_width = min(DC_GROUP_DIM, xsize - dc_px0)
+            dc_rgb = rgb[
+                :,
+                dc_py0 : dc_py0 + dc_height,
+                dc_px0 : dc_px0 + dc_width,
+            ]
+            dc_encoding = _encode_dc_group(dc_rgb, distance)
+            dc_group_encodings.append(dc_encoding)
+
+            local_x_ac_groups = _ceil_div(dc_width, GROUP_DIM)
+            local_y_ac_groups = _ceil_div(dc_height, GROUP_DIM)
+            base_ac_group_x = dc_group_x * (DC_GROUP_DIM // GROUP_DIM)
+            base_ac_group_y = dc_group_y * (DC_GROUP_DIM // GROUP_DIM)
+            for local_group_y in range(local_y_ac_groups):
+                global_group_y = base_ac_group_y + local_group_y
+                for local_group_x in range(local_x_ac_groups):
+                    global_group_x = base_ac_group_x + local_group_x
+                    local_group_id = local_group_y * local_x_ac_groups + local_group_x
+                    global_group_id = global_group_y * x_ac_groups + global_group_x
+                    ac_token_groups[global_group_id] = (
+                        dc_encoding.ac_token_groups[local_group_id]
+                    )
+
+    if any(group is None for group in ac_token_groups):
+        raise RuntimeError("internal error: missing AC token group")
+
+    return codestream_bytes_from_groups(
         xsize,
         ysize,
-        dc_tokens(quant_dc),
-        ac_metadata_tokens(ytox_map, ytob_map, ac_strategy, raw_quant_field),
-        ac_token_groups,
-        ac_strategy,
+        [encoding.dc_tokens for encoding in dc_group_encodings],
+        [encoding.ac_metadata_tokens for encoding in dc_group_encodings],
+        [group for group in ac_token_groups if group is not None],
+        [encoding.ac_strategy for encoding in dc_group_encodings],
         distance,
     )
