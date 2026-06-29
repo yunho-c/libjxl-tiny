@@ -17,26 +17,16 @@ import sys
 import tempfile
 
 from trace_test_utils import (
-    artifact_with_suffix,
-    load_artifact,
+    artifacts_matching_numbered,
+    load_exact_artifact,
+    load_exact_bytes_artifact,
+    load_named_artifact,
     load_manifest,
     resolve_executable,
 )
 
 from trace_fixture_matrix import fixtures_from_args, prepare_work_dir, run_trace
-from jxl_tiny import codestream_bytes
-
-
-def load_bytes_artifact(trace_dir: Path, manifest: dict[str, object],
-                        suffix: str) -> bytes:
-  artifact = artifact_with_suffix(manifest, suffix)
-  path = trace_dir / str(artifact["path"])
-  data = path.read_bytes()
-  expected_shape = tuple(int(dim) for dim in artifact["shape"])
-  if expected_shape != (len(data),):
-    raise RuntimeError(
-        f"{suffix}: expected shape {expected_shape}, got ({len(data)},)")
-  return data
+from jxl_tiny import codestream_bytes_from_ac_groups
 
 
 def assert_bytes_equal(name: str, expected: bytes, actual: bytes) -> None:
@@ -60,17 +50,23 @@ def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
   if not isinstance(image, dict):
     raise RuntimeError("manifest has no image metadata")
 
-  actual = codestream_bytes(
+  ac_token_groups = [
+      load_named_artifact(trace_dir, artifact)
+      for artifact in artifacts_matching_numbered(
+          manifest, r"dcg_0_acg_(?P<index>\d+)_stripe_0_ac_ac_tokens")
+  ]
+  actual = codestream_bytes_from_ac_groups(
       int(image["xsize"]),
       int(image["ysize"]),
-      load_artifact(trace_dir, manifest, "dc_tokens"),
-      load_artifact(trace_dir, manifest, "ac_metadata_tokens"),
-      load_artifact(trace_dir, manifest, "ac_tokens"),
-      load_artifact(trace_dir, manifest, "ac_strategy"),
+      load_exact_artifact(trace_dir, manifest, "dcg_0_tokens_dc_tokens"),
+      load_exact_artifact(trace_dir, manifest,
+                          "dcg_0_tokens_ac_metadata_tokens"),
+      ac_token_groups,
+      load_exact_artifact(trace_dir, manifest, "dcg_0_ac_strategy"),
       float(manifest["distance"]),
   )
   assert_bytes_equal("codestream",
-                     load_bytes_artifact(trace_dir, manifest, "codestream"),
+                     load_exact_bytes_artifact(trace_dir, manifest, "codestream"),
                      actual)
 
   print(f"codestream trace parity fixture passed: {fixture.name}")

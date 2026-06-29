@@ -629,28 +629,58 @@ def frame_sections(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
                    ac_tokens: np.ndarray, ac_strategy: np.ndarray,
                    distance: float, num_dc_groups: int = 1,
                    num_groups: int = 1) -> list[BitWriter]:
+  return frame_sections_from_ac_groups(dc_tokens, ac_metadata_tokens,
+                                       [ac_tokens], ac_strategy, distance,
+                                       num_dc_groups, num_groups)
+
+
+def frame_sections_from_ac_groups(
+    dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
+    ac_token_groups: list[np.ndarray], ac_strategy: np.ndarray, distance: float,
+    num_dc_groups: int = 1, num_groups: int | None = None
+) -> list[BitWriter]:
+  if not ac_token_groups:
+    raise ValueError("expected at least one AC token group")
+  if num_groups is None:
+    num_groups = len(ac_token_groups)
+  if num_groups != len(ac_token_groups):
+    raise ValueError(
+        f"num_groups={num_groups} does not match {len(ac_token_groups)} AC groups")
   dist = compute_distance_params(distance)
   dc_code = dc_entropy_code(dc_tokens, ac_metadata_tokens)
-  ac_code = ac_entropy_code(ac_tokens)
-  return [
+  ac_code = ac_entropy_code(np.concatenate(ac_token_groups, axis=0))
+  sections = [
       _dc_global_section_writer(dist, num_dc_groups, dc_code),
       _dc_group_section_writer(dc_tokens, ac_metadata_tokens, ac_strategy,
                                dc_code),
       _ac_global_section_writer(num_groups, ac_code),
-      _ac_group_section_writer(ac_tokens, ac_code),
   ]
+  sections.extend(
+      _ac_group_section_writer(ac_tokens, ac_code)
+      for ac_tokens in ac_token_groups)
+  return sections
 
 
 def frame_bytes(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
                 ac_tokens: np.ndarray, ac_strategy: np.ndarray,
                 distance: float, num_dc_groups: int = 1,
                 num_groups: int = 1) -> bytes:
+  return frame_bytes_from_ac_groups(dc_tokens, ac_metadata_tokens, [ac_tokens],
+                                    ac_strategy, distance, num_dc_groups,
+                                    num_groups)
+
+
+def frame_bytes_from_ac_groups(
+    dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
+    ac_token_groups: list[np.ndarray], ac_strategy: np.ndarray, distance: float,
+    num_dc_groups: int = 1, num_groups: int | None = None) -> bytes:
   dist = compute_distance_params(distance)
   writer = BitWriter()
   write_frame_header(dist.x_qm_scale, dist.epf_iters, writer)
   combine_sections(
-      frame_sections(dc_tokens, ac_metadata_tokens, ac_tokens, ac_strategy,
-                     distance, num_dc_groups, num_groups), writer)
+      frame_sections_from_ac_groups(dc_tokens, ac_metadata_tokens,
+                                    ac_token_groups, ac_strategy, distance,
+                                    num_dc_groups, num_groups), writer)
   return writer.bytes_padded()
 
 
@@ -658,6 +688,17 @@ def codestream_bytes(xsize: int, ysize: int, dc_tokens: np.ndarray,
                      ac_metadata_tokens: np.ndarray, ac_tokens: np.ndarray,
                      ac_strategy: np.ndarray, distance: float,
                      num_dc_groups: int = 1, num_groups: int = 1) -> bytes:
+  return codestream_bytes_from_ac_groups(xsize, ysize, dc_tokens,
+                                         ac_metadata_tokens, [ac_tokens],
+                                         ac_strategy, distance, num_dc_groups,
+                                         num_groups)
+
+
+def codestream_bytes_from_ac_groups(
+    xsize: int, ysize: int, dc_tokens: np.ndarray,
+    ac_metadata_tokens: np.ndarray, ac_token_groups: list[np.ndarray],
+    ac_strategy: np.ndarray, distance: float, num_dc_groups: int = 1,
+    num_groups: int | None = None) -> bytes:
   if distance < 0.0:
     raise ValueError(f"invalid butteraugli distance: {distance}")
   if distance == 0.0:
@@ -668,6 +709,8 @@ def codestream_bytes(xsize: int, ysize: int, dc_tokens: np.ndarray,
   dist = compute_distance_params(effective_distance)
   write_frame_header(dist.x_qm_scale, dist.epf_iters, writer)
   combine_sections(
-      frame_sections(dc_tokens, ac_metadata_tokens, ac_tokens, ac_strategy,
-                     effective_distance, num_dc_groups, num_groups), writer)
+      frame_sections_from_ac_groups(dc_tokens, ac_metadata_tokens,
+                                    ac_token_groups, ac_strategy,
+                                    effective_distance, num_dc_groups,
+                                    num_groups), writer)
   return writer.bytes_padded()

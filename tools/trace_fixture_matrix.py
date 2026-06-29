@@ -34,6 +34,7 @@ DEFAULT_FIXTURES = (
     TraceFixture("gradient_65x33_d0_5", 65, 33, 0.5, "gradient"),
     TraceFixture("checker_16x16_d2", 16, 16, 2.0, "checker"),
     TraceFixture("rings_32x16_d1", 32, 16, 1.0, "rings"),
+    TraceFixture("gradient_257x17_d1", 257, 17, 1.0, "gradient"),
 )
 
 
