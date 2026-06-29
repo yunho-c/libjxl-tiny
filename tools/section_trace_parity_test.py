@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,7 +23,7 @@ from trace_test_utils import (
     resolve_executable,
 )
 
-import pfm_tools
+from trace_fixture_matrix import fixtures_from_args, prepare_work_dir, run_trace
 from jxl_tiny import (
     ac_entropy_code,
     ac_global_section,
@@ -62,25 +61,8 @@ def assert_bytes_equal(name: str, expected: bytes, actual: bytes) -> None:
       f"expected_len={len(expected)}, actual_len={len(actual)}")
 
 
-def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
-  trace = resolve_executable(args.trace)
-  if work_dir.exists():
-    shutil.rmtree(work_dir)
-  work_dir.mkdir(parents=True)
-
-  source = work_dir / "source.pfm"
-  trace_dir = work_dir / "trace"
-  pfm_tools.write_pfm(
-      source,
-      args.width,
-      args.height,
-      pfm_tools.generate_pixels(args.pattern, args.width, args.height),
-  )
-  subprocess.run(
-      [trace, str(source), str(trace_dir), "-d", str(args.distance)],
-      check=True,
-  )
-
+def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
+  _, trace_dir = run_trace(trace, fixture, work_dir)
   manifest = load_manifest(trace_dir)
   dc_tokens = load_artifact(trace_dir, manifest, "dc_tokens")
   ac_metadata_tokens = load_artifact(trace_dir, manifest, "ac_metadata_tokens")
@@ -89,7 +71,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
 
   dc_code = dc_entropy_code(dc_tokens, ac_metadata_tokens)
   ac_code = ac_entropy_code(ac_tokens)
-  dist = compute_distance_params(args.distance)
+  dist = compute_distance_params(fixture.distance)
 
   expected_sections = {
       "dc_global_section": dc_global_section(dist, 1, dc_code),
@@ -103,7 +85,17 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
     assert_bytes_equal(name, load_bytes_artifact(trace_dir, manifest, name),
                        actual)
 
-  print(f"section trace parity test passed: {trace_dir}")
+  print(f"section trace parity fixture passed: {fixture.name}")
+
+
+def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
+  trace = resolve_executable(args.trace)
+  prepare_work_dir(work_dir)
+  fixtures = fixtures_from_args(args)
+  for fixture in fixtures:
+    compare_fixture(trace, work_dir / fixture.name, fixture)
+
+  print(f"section trace parity test passed: {work_dir}")
 
 
 def main(argv: list[str]) -> int:
@@ -115,6 +107,7 @@ def main(argv: list[str]) -> int:
   parser.add_argument("--distance", type=float, default=1.0)
   parser.add_argument(
       "--pattern", choices=("gradient", "checker", "rings"), default="gradient")
+  parser.add_argument("--fixture-matrix", action="store_true")
   args = parser.parse_args(argv)
 
   try:
