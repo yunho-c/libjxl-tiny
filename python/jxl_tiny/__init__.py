@@ -11,10 +11,12 @@ from .bitstream import (
     ac_group_section,
     codestream_bytes,
     codestream_bytes_from_ac_groups,
+    codestream_bytes_from_groups,
     dc_global_section,
     dc_group_section,
     frame_bytes,
     frame_bytes_from_ac_groups,
+    frame_bytes_from_groups,
 )
 from .chroma_from_luma import compute_chroma_from_luma
 from .entropy import ac_entropy_code, dc_entropy_code
@@ -33,6 +35,7 @@ __all__ = [
     "ac_group_section",
     "codestream_bytes",
     "codestream_bytes_from_ac_groups",
+    "codestream_bytes_from_groups",
     "estimate_entropy",
     "find_best_16x16_transform",
     "compute_chroma_from_luma",
@@ -45,6 +48,7 @@ __all__ = [
     "dc_tokens",
     "frame_bytes",
     "frame_bytes_from_ac_groups",
+    "frame_bytes_from_groups",
     "quantize_ac_group",
     "read_pfm",
     "to_xyb",

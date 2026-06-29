@@ -18,7 +18,6 @@ import tempfile
 
 from trace_test_utils import (
     artifacts_matching_numbered,
-    load_exact_artifact,
     load_exact_bytes_artifact,
     load_named_artifact,
     load_manifest,
@@ -26,7 +25,7 @@ from trace_test_utils import (
 )
 
 from trace_fixture_matrix import fixtures_from_args, prepare_work_dir, run_trace
-from jxl_tiny import codestream_bytes_from_ac_groups
+from jxl_tiny import codestream_bytes_from_groups
 
 
 def assert_bytes_equal(name: str, expected: bytes, actual: bytes) -> None:
@@ -50,19 +49,33 @@ def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
   if not isinstance(image, dict):
     raise RuntimeError("manifest has no image metadata")
 
+  dc_token_groups = [
+      load_named_artifact(trace_dir, artifact)
+      for artifact in artifacts_matching_numbered(
+          manifest, r"dcg_(?P<index>\d+)_tokens_dc_tokens")
+  ]
+  ac_metadata_token_groups = [
+      load_named_artifact(trace_dir, artifact)
+      for artifact in artifacts_matching_numbered(
+          manifest, r"dcg_(?P<index>\d+)_tokens_ac_metadata_tokens")
+  ]
+  ac_strategy_groups = [
+      load_named_artifact(trace_dir, artifact)
+      for artifact in artifacts_matching_numbered(
+          manifest, r"dcg_(?P<index>\d+)_ac_strategy")
+  ]
   ac_token_groups = [
       load_named_artifact(trace_dir, artifact)
       for artifact in artifacts_matching_numbered(
-          manifest, r"dcg_0_acg_(?P<index>\d+)_stripe_0_ac_ac_tokens")
+          manifest, r"dcg_\d+_acg_(?P<index>\d+)_stripe_0_ac_ac_tokens")
   ]
-  actual = codestream_bytes_from_ac_groups(
+  actual = codestream_bytes_from_groups(
       int(image["xsize"]),
       int(image["ysize"]),
-      load_exact_artifact(trace_dir, manifest, "dcg_0_tokens_dc_tokens"),
-      load_exact_artifact(trace_dir, manifest,
-                          "dcg_0_tokens_ac_metadata_tokens"),
+      dc_token_groups,
+      ac_metadata_token_groups,
       ac_token_groups,
-      load_exact_artifact(trace_dir, manifest, "dcg_0_ac_strategy"),
+      ac_strategy_groups,
       float(manifest["distance"]),
   )
   assert_bytes_equal("codestream",
