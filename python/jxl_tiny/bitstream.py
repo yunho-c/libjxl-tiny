@@ -1,3 +1,9 @@
+# Copyright (c) the JPEG XL Project Authors.
+#
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file or at
+# https://developers.google.com/open-source/licenses/bsd
+
 """Bitstream serialization helpers for trace-backed section parity tests."""
 
 from __future__ import annotations
@@ -9,13 +15,15 @@ from .entropy import (
     EntropyCodeTables,
     K_AC_CONTEXT_MAP,
     K_ALPHABET_SIZE,
+    ac_entropy_code,
     create_huffman_tree,
+    dc_entropy_code,
     optimize_entropy_code_from_context_values,
     optimize_prefix_code_from_context_values,
     uint_token,
     _convert_bit_depths_to_symbols,
 )
-from .quantization import DistanceParams
+from .quantization import DistanceParams, compute_distance_params
 from .tokenization import REPO_ROOT, _extract_int_table, pack_signed
 
 
@@ -52,6 +60,28 @@ class BitWriter:
 
   def bytes_padded(self) -> bytes:
     return bytes(self._bytes)
+
+  def zero_pad_to_byte(self) -> None:
+    remainder_bits = (-self.bits_written) % 8
+    if remainder_bits:
+      self.write(remainder_bits, 0)
+
+  def append(self, other: "BitWriter") -> None:
+    full_bytes = other.bits_written // 8
+    trailing_bits = other.bits_written % 8
+    for i in range(full_bytes):
+      self.write(8, other._bytes[i])
+    if trailing_bits:
+      self.write(trailing_bits, other._bytes[full_bytes] &
+                 ((1 << trailing_bits) - 1))
+
+  def append_byte_aligned(self, others: list["BitWriter"]) -> None:
+    if self.bits_written % 8 != 0:
+      raise ValueError("append_byte_aligned requires byte-aligned output")
+    for other in others:
+      other.zero_pad_to_byte()
+      for byte in other.bytes_padded():
+        self.write(8, byte)
 
 
 def ceil_log2_nonzero(value: int) -> int:
@@ -399,8 +429,8 @@ def write_context_tree(num_dc_groups: int, writer: BitWriter) -> None:
     write_token(token, code, writer)
 
 
-def dc_global_section(dist: DistanceParams, num_dc_groups: int,
-                      dc_code: EntropyCodeTables) -> bytes:
+def _dc_global_section_writer(dist: DistanceParams, num_dc_groups: int,
+                              dc_code: EntropyCodeTables) -> BitWriter:
   writer = BitWriter()
   writer.write(1, 1)
   write_quant_scales(dist.global_scale, dist.quant_dc, writer)
@@ -411,10 +441,16 @@ def dc_global_section(dist: DistanceParams, num_dc_groups: int,
   write_context_tree(num_dc_groups, writer)
   writer.write(1, 0)
   write_entropy_code(dc_code, writer)
-  return writer.bytes_padded()
+  return writer
 
 
-def ac_global_section(num_groups: int, ac_code: EntropyCodeTables) -> bytes:
+def dc_global_section(dist: DistanceParams, num_dc_groups: int,
+                      dc_code: EntropyCodeTables) -> bytes:
+  return _dc_global_section_writer(dist, num_dc_groups, dc_code).bytes_padded()
+
+
+def _ac_global_section_writer(num_groups: int,
+                              ac_code: EntropyCodeTables) -> BitWriter:
   writer = BitWriter()
   writer.write(1, 1)
   num_histo_bits = ceil_log2_nonzero(num_groups)
@@ -424,7 +460,11 @@ def ac_global_section(num_groups: int, ac_code: EntropyCodeTables) -> bytes:
   writer.write(13, 0)
   writer.write(1, 0)
   write_entropy_code(ac_code, writer)
-  return writer.bytes_padded()
+  return writer
+
+
+def ac_global_section(num_groups: int, ac_code: EntropyCodeTables) -> bytes:
+  return _ac_global_section_writer(num_groups, ac_code).bytes_padded()
 
 
 def _num_ac_blocks(ac_strategy: np.ndarray) -> int:
@@ -435,6 +475,14 @@ def _num_ac_blocks(ac_strategy: np.ndarray) -> int:
 def dc_group_section(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
                      ac_strategy: np.ndarray,
                      dc_code: EntropyCodeTables) -> bytes:
+  return _dc_group_section_writer(dc_tokens, ac_metadata_tokens, ac_strategy,
+                                  dc_code).bytes_padded()
+
+
+def _dc_group_section_writer(dc_tokens: np.ndarray,
+                             ac_metadata_tokens: np.ndarray,
+                             ac_strategy: np.ndarray,
+                             dc_code: EntropyCodeTables) -> BitWriter:
   strategy_grid = np.asarray(ac_strategy, dtype=np.uint8)
   num_blocks = int(strategy_grid.size)
   num_ac_blocks = _num_ac_blocks(strategy_grid)
@@ -445,22 +493,181 @@ def dc_group_section(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
     staged.append((K_MAX_CONTEXTS + nb_bits, num_ac_blocks - 1))
   staged.append((K_MAX_CONTEXTS + 4, 3))
   staged.extend((int(context), int(value)) for context, value in ac_metadata_tokens)
-  return serialize_optimized_section(staged, dc_code)
+  return serialize_optimized_section_writer(staged, dc_code)
 
 
 def ac_group_section(ac_tokens: np.ndarray, ac_code: EntropyCodeTables) -> bytes:
+  return _ac_group_section_writer(ac_tokens, ac_code).bytes_padded()
+
+
+def _ac_group_section_writer(ac_tokens: np.ndarray,
+                             ac_code: EntropyCodeTables) -> BitWriter:
   logical = np.asarray(ac_tokens, dtype=np.uint32)
   staged = [(int(K_AC_CONTEXT_MAP[int(context)]), int(value))
             for context, value in logical]
-  return serialize_optimized_section(staged, ac_code)
+  return serialize_optimized_section_writer(staged, ac_code)
 
 
 def serialize_optimized_section(staged_tokens: list[tuple[int, int]],
                                 code: EntropyCodeTables) -> bytes:
+  return serialize_optimized_section_writer(staged_tokens, code).bytes_padded()
+
+
+def serialize_optimized_section_writer(staged_tokens: list[tuple[int, int]],
+                                       code: EntropyCodeTables) -> BitWriter:
   writer = BitWriter()
   for context, value in staged_tokens:
     if context >= K_MAX_CONTEXTS:
       writer.write(context - K_MAX_CONTEXTS, value)
     else:
       write_token((context, value), code, writer)
+  return writer
+
+
+def write_frame_header(x_qm_scale: int, epf_iters: int,
+                       writer: BitWriter) -> None:
+  writer.write(1, 0)
+  writer.write(2, 0)
+  writer.write(1, 0)
+  writer.write(2, 2)
+  writer.write(8, 111)
+  writer.write(2, 0)
+  writer.write(3, x_qm_scale)
+  writer.write(3, 2)
+  writer.write(2, 0)
+  writer.write(1, 0)
+  writer.write(2, 0)
+  writer.write(1, 1)
+  writer.write(2, 0)
+  if epf_iters == 2:
+    writer.write(1, 1)
+  else:
+    writer.write(1, 0)
+    writer.write(1, 0)
+    writer.write(2, epf_iters)
+    if epf_iters > 0:
+      writer.write(1, 0)
+      writer.write(1, 0)
+      writer.write(1, 0)
+    writer.write(2, 0)
+  writer.write(2, 0)
+
+
+def write_toc(sections: list[BitWriter], writer: BitWriter) -> None:
+  writer.write(1, 0)
+  writer.zero_pad_to_byte()
+  for section in sections:
+    section_size = (section.bits_written + 7) // 8
+    offset = 0
+    for selector, nbits in enumerate((10, 14, 22, 30)):
+      if section_size < offset + (1 << nbits):
+        writer.write(2, selector)
+        writer.write(nbits, section_size - offset)
+        break
+      offset += 1 << nbits
+    else:
+      raise ValueError(f"section too large: {section_size}")
+  writer.zero_pad_to_byte()
+
+
+def combine_sections(sections: list[BitWriter], writer: BitWriter) -> None:
+  sections = list(sections)
+  if len(sections) == 4:
+    for section in sections[1:4]:
+      sections[0].append(section)
+    sections = sections[:1]
+  write_toc(sections, writer)
+  writer.append_byte_aligned(sections)
+
+
+def _write_size(size: int, writer: BitWriter) -> None:
+  size -= 1
+  for selector, nbits in enumerate((9, 13, 18, 30)):
+    if size < (1 << nbits):
+      writer.write(2, selector)
+      writer.write(nbits, size)
+      return
+  raise ValueError(f"image dimension too large: {size + 1}")
+
+
+def write_size_header(xsize: int, ysize: int, writer: BitWriter) -> None:
+  if xsize <= 0 or ysize <= 0:
+    raise ValueError("image dimensions must be nonzero")
+  writer.write(1, 0)
+  _write_size(ysize, writer)
+  writer.write(3, 0)
+  _write_size(xsize, writer)
+
+
+def write_file_header(xsize: int, ysize: int, writer: BitWriter) -> None:
+  writer.write(8, 0xFF)
+  writer.write(8, 0x0A)
+  write_size_header(xsize, ysize, writer)
+  writer.write(1, 0)
+  writer.write(1, 0)
+  writer.write(1, 1)
+  writer.write(2, 0)
+  writer.write(4, 7)
+  writer.write(1, 0)
+  writer.write(2, 0)
+  writer.write(1, 1)
+  writer.write(1, 0)
+  writer.write(1, 0)
+  writer.write(2, 0)
+  writer.write(2, 1)
+  writer.write(2, 1)
+  writer.write(1, 0)
+  writer.write(2, 2)
+  writer.write(4, 6)
+  writer.write(2, 1)
+  writer.write(2, 0)
+  writer.write(1, 1)
+  writer.zero_pad_to_byte()
+
+
+def frame_sections(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
+                   ac_tokens: np.ndarray, ac_strategy: np.ndarray,
+                   distance: float, num_dc_groups: int = 1,
+                   num_groups: int = 1) -> list[BitWriter]:
+  dist = compute_distance_params(distance)
+  dc_code = dc_entropy_code(dc_tokens, ac_metadata_tokens)
+  ac_code = ac_entropy_code(ac_tokens)
+  return [
+      _dc_global_section_writer(dist, num_dc_groups, dc_code),
+      _dc_group_section_writer(dc_tokens, ac_metadata_tokens, ac_strategy,
+                               dc_code),
+      _ac_global_section_writer(num_groups, ac_code),
+      _ac_group_section_writer(ac_tokens, ac_code),
+  ]
+
+
+def frame_bytes(dc_tokens: np.ndarray, ac_metadata_tokens: np.ndarray,
+                ac_tokens: np.ndarray, ac_strategy: np.ndarray,
+                distance: float, num_dc_groups: int = 1,
+                num_groups: int = 1) -> bytes:
+  dist = compute_distance_params(distance)
+  writer = BitWriter()
+  write_frame_header(dist.x_qm_scale, dist.epf_iters, writer)
+  combine_sections(
+      frame_sections(dc_tokens, ac_metadata_tokens, ac_tokens, ac_strategy,
+                     distance, num_dc_groups, num_groups), writer)
+  return writer.bytes_padded()
+
+
+def codestream_bytes(xsize: int, ysize: int, dc_tokens: np.ndarray,
+                     ac_metadata_tokens: np.ndarray, ac_tokens: np.ndarray,
+                     ac_strategy: np.ndarray, distance: float,
+                     num_dc_groups: int = 1, num_groups: int = 1) -> bytes:
+  if distance < 0.0:
+    raise ValueError(f"invalid butteraugli distance: {distance}")
+  if distance == 0.0:
+    raise ValueError("lossless compression is not supported")
+  effective_distance = 0.03 if distance <= 0.03 else float(distance)
+  writer = BitWriter()
+  write_file_header(xsize, ysize, writer)
+  dist = compute_distance_params(effective_distance)
+  write_frame_header(dist.x_qm_scale, dist.epf_iters, writer)
+  combine_sections(
+      frame_sections(dc_tokens, ac_metadata_tokens, ac_tokens, ac_strategy,
+                     effective_distance, num_dc_groups, num_groups), writer)
   return writer.bytes_padded()

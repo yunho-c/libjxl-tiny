@@ -9,8 +9,10 @@ from .adaptive_quantization import compute_adaptive_quantization
 from .bitstream import (
     ac_global_section,
     ac_group_section,
+    codestream_bytes,
     dc_global_section,
     dc_group_section,
+    frame_bytes,
 )
 from .chroma_from_luma import compute_chroma_from_luma
 from .entropy import ac_entropy_code, dc_entropy_code
@@ -27,6 +29,7 @@ __all__ = [
     "ac_entropy_code",
     "ac_global_section",
     "ac_group_section",
+    "codestream_bytes",
     "estimate_entropy",
     "find_best_16x16_transform",
     "compute_chroma_from_luma",
@@ -37,6 +40,7 @@ __all__ = [
     "dc_global_section",
     "dc_group_section",
     "dc_tokens",
+    "frame_bytes",
     "quantize_ac_group",
     "read_pfm",
     "to_xyb",
