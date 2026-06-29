@@ -36,6 +36,7 @@ ONE_DC_GROUP_FIXTURES = (
     TraceFixture("rings_32x16_d1", 32, 16, 1.0, "rings"),
     TraceFixture("gradient_257x17_d1", 257, 17, 1.0, "gradient"),
     TraceFixture("gradient_2049x17_d1", 2049, 17, 1.0, "gradient"),
+    TraceFixture("gradient_16x16_d0_01", 16, 16, 0.01, "gradient"),
 )
 
 

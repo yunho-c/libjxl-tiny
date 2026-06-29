@@ -55,6 +55,7 @@ def assert_bytes_equal(name: str, expected: bytes, actual: bytes) -> None:
 def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
   _, trace_dir = run_trace(trace, fixture, work_dir)
   manifest = load_manifest(trace_dir)
+  distance = float(manifest["distance"])
   dc_token_groups = [
       load_named_artifact(trace_dir, artifact)
       for artifact in artifacts_matching_numbered(
@@ -79,7 +80,7 @@ def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
   dc_code = dc_entropy_code(np.concatenate(dc_token_groups, axis=0),
                             np.concatenate(ac_metadata_token_groups, axis=0))
   ac_code = ac_entropy_code(np.concatenate(ac_token_groups, axis=0))
-  dist = compute_distance_params(fixture.distance)
+  dist = compute_distance_params(distance)
 
   expected_sections = {
       "dc_global_section": dc_global_section(dist, len(dc_token_groups), dc_code),

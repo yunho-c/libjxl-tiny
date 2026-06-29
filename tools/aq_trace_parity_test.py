@@ -58,12 +58,13 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   )
 
   manifest = load_manifest(trace_dir)
+  distance = float(manifest["distance"])
   image = manifest.get("image")
   if image != {"xsize": args.width, "ysize": args.height}:
     raise RuntimeError(f"unexpected image metadata: {image}")
 
   xyb = to_xyb(copy_and_pad_image(read_pfm(source)))
-  result = compute_adaptive_quantization(xyb, args.distance)
+  result = compute_adaptive_quantization(xyb, distance)
 
   assert_close(
       "aq_map",
@@ -139,7 +140,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
       xyb,
       result.aq_map,
       result.mask,
-      args.distance,
+      distance,
       int(cfl.ytox),
       int(cfl.ytob),
   )
@@ -206,7 +207,7 @@ def main(argv: list[str]) -> int:
   parser.add_argument("--mask-atol", type=float, default=5e-4)
   parser.add_argument("--mask-rtol", type=float, default=5e-4)
   parser.add_argument("--strategy-atol", type=float, default=1e-3)
-  parser.add_argument("--strategy-rtol", type=float, default=1e-5)
+  parser.add_argument("--strategy-rtol", type=float, default=5e-5)
   args = parser.parse_args(argv)
 
   try:

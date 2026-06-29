@@ -72,6 +72,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   )
 
   manifest = load_manifest(trace_dir)
+  distance = float(manifest["distance"])
   xyb = load_artifact(trace_dir, manifest, "xyb")
   raw_quant_field = load_artifact(trace_dir, manifest, "raw_quant_field")
   ac_strategy = load_artifact(trace_dir, manifest, "ac_strategy")
@@ -97,7 +98,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
       "ac_tokens",
       load_artifact(trace_dir, manifest, "ac_tokens"),
       ac_tokens(xyb, raw_quant_field, ac_strategy, ytox_map, ytob_map,
-                args.distance),
+                distance),
       atol=0,
       rtol=0,
   )

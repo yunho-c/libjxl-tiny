@@ -154,6 +154,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   )
 
   manifest = load_manifest(trace_dir)
+  distance = float(manifest["distance"])
   blocks = collect_block_artifacts(manifest)
   xyb = load_artifact(trace_dir, manifest, "xyb")
   raw_quant_field = load_artifact(trace_dir, manifest, "raw_quant_field")
@@ -161,7 +162,7 @@ def run_parity(args: argparse.Namespace, work_dir: Path) -> None:
   ytox_map = load_artifact(trace_dir, manifest, "ytox_map")
   ytob_map = load_artifact(trace_dir, manifest, "ytob_map")
   actual_blocks = quantize_ac_group(xyb, raw_quant_field, ac_strategy, ytox_map,
-                                    ytob_map, args.distance)
+                                    ytob_map, distance)
 
   if sorted(blocks) != sorted(actual_blocks):
     raise RuntimeError(

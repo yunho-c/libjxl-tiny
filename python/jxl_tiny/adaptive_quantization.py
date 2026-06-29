@@ -282,6 +282,7 @@ def inverse_global_ac_scale(distance: float) -> np.float32:
   k_ac_quant = 0.8
   k_quant_field_target = 5
   scale = k_global_scale_denom * k_ac_quant / (distance * k_quant_field_target)
+  scale = min(max(scale, 1.0), float(1 << 15))
   qdc = quant_dc(distance)
   scaled_quant_dc = int(qdc * 4096 * 1.6)
   global_scale = min(max(int(scale), 1), scaled_quant_dc)
