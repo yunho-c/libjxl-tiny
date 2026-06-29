@@ -6,7 +6,7 @@
 # license that can be found in the LICENSE file or at
 # https://developers.google.com/open-source/licenses/bsd
 
-"""Check the Python single-group encoder against jxl_tiny_trace."""
+"""Check the Python one-DC-group encoder against jxl_tiny_trace."""
 
 from __future__ import annotations
 
@@ -27,13 +27,14 @@ from trace_fixture_matrix import run_trace
 from jxl_tiny import encode_from_image, read_pfm
 
 
-SINGLE_GROUP_FIXTURES = (
+ONE_DC_GROUP_FIXTURES = (
     TraceFixture("gradient_17x9_d1", 17, 9, 1.0, "gradient"),
     TraceFixture("checker_17x9_d1", 17, 9, 1.0, "checker"),
     TraceFixture("rings_17x9_d1", 17, 9, 1.0, "rings"),
     TraceFixture("gradient_65x33_d0_5", 65, 33, 0.5, "gradient"),
     TraceFixture("checker_16x16_d2", 16, 16, 2.0, "checker"),
     TraceFixture("rings_32x16_d1", 32, 16, 1.0, "rings"),
+    TraceFixture("gradient_257x17_d1", 257, 17, 1.0, "gradient"),
 )
 
 
@@ -53,7 +54,7 @@ def assert_bytes_equal(name: str, expected: bytes, actual: bytes) -> None:
 
 def fixtures_from_args(args: argparse.Namespace) -> tuple[TraceFixture, ...]:
     if args.fixture_matrix:
-        return SINGLE_GROUP_FIXTURES
+        return ONE_DC_GROUP_FIXTURES
     return (fixture_from_args(args),)
 
 
