@@ -20,6 +20,7 @@ from .bitstream import (
 )
 from .chroma_from_luma import compute_chroma_from_luma
 from .entropy import ac_entropy_code, dc_entropy_code
+from .encoder import encode_from_image
 from .image import copy_and_pad_image
 from .pfm import read_pfm
 from .quantization import compute_distance_params, quantize_ac_group
@@ -37,6 +38,7 @@ __all__ = [
     "codestream_bytes_from_ac_groups",
     "codestream_bytes_from_groups",
     "estimate_entropy",
+    "encode_from_image",
     "find_best_16x16_transform",
     "compute_chroma_from_luma",
     "compute_adaptive_quantization",

@@ -97,6 +97,13 @@ if(BUILD_TESTING)
           --trace $<TARGET_FILE:jxl_tiny_trace>
           --work-dir ${CMAKE_CURRENT_BINARY_DIR}/codestream_trace_parity_test
           --fixture-matrix)
+      add_test(
+        NAME encode_trace_parity_test
+        COMMAND ${PYTHON3_EXECUTABLE}
+          ${PROJECT_SOURCE_DIR}/tools/encode_trace_parity_test.py
+          --trace $<TARGET_FILE:jxl_tiny_trace>
+          --work-dir ${CMAKE_CURRENT_BINARY_DIR}/encode_trace_parity_test
+          --fixture-matrix)
     else()
       message(STATUS "NumPy not found; skipping trace_smoke_test")
     endif()
