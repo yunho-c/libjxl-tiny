@@ -35,13 +35,9 @@ def default_output_path(input_path: Path) -> Path:
 
 
 def _linearize_srgb_uint8(rgb: np.ndarray) -> np.ndarray:
-  values = rgb.astype(np.float32) * np.float32(1.0 / 255.0)
-  return np.where(
-      values <= np.float32(0.04045),
-      values * np.float32(1.0 / 12.92),
-      ((values + np.float32(0.055)) * np.float32(1.0 / 1.055)) **
-      np.float32(2.4),
-  ).astype(np.float32)
+  lut = np.asarray([pfm_tools.srgb_to_linear(i) for i in range(256)],
+                   dtype=np.float32)
+  return lut[np.asarray(rgb, dtype=np.uint8)]
 
 
 def load_raster_image(path: Path, background: str) -> np.ndarray:
