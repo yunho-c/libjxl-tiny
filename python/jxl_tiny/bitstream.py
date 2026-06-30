@@ -372,6 +372,8 @@ def write_context_map(code: EntropyCodeTables, writer: BitWriter) -> None:
     tokens = np.asarray([(0, int(context_map[i]))
                          for i in range(context_map.shape[0])],
                         dtype=np.uint32)
+  # Context maps are themselves compressed as a tiny one-context token stream
+  # before the prefix codes for the actual image tokens are written.
   depths, bits = optimize_prefix_code_from_context_values(tokens, 1,
                                                           np.zeros(1,
                                                                    dtype=np.uint8))
@@ -493,6 +495,8 @@ def _dc_group_section_writer(dc_tokens: np.ndarray,
   num_blocks = int(strategy_grid.size)
   num_ac_blocks = _num_ac_blocks(strategy_grid)
   nb_bits = ceil_log2_nonzero(num_blocks)
+  # Contexts >= K_MAX_CONTEXTS are sentinel entries for raw fixed-width bits;
+  # lower contexts are entropy-coded with `dc_code`.
   staged: list[tuple[int, int]] = [(K_MAX_CONTEXTS + 6, 12)]
   staged.extend((int(context), int(value)) for context, value in dc_tokens)
   if nb_bits != 0:
@@ -509,6 +513,8 @@ def ac_group_section(ac_tokens: np.ndarray, ac_code: EntropyCodeTables) -> bytes
 def _ac_group_section_writer(ac_tokens: np.ndarray,
                              ac_code: EntropyCodeTables) -> BitWriter:
   logical = np.asarray(ac_tokens, dtype=np.uint32)
+  # AC tokens use logical coefficient contexts; map them to compact entropy
+  # contexts before writing with the optimized AC prefix tables.
   staged = [(int(K_AC_CONTEXT_MAP[int(context)]), int(value))
             for context, value in logical]
   return serialize_optimized_section_writer(staged, ac_code)
@@ -579,6 +585,8 @@ def write_toc(sections: list[BitWriter], writer: BitWriter) -> None:
 def combine_sections(sections: list[BitWriter], writer: BitWriter) -> None:
   sections = list(sections)
   if len(sections) == 4:
+    # A single-group frame packs DC global, DC group, AC global, and AC group
+    # payloads into one TOC entry, matching libjxl-tiny's special case.
     for section in sections[1:4]:
       sections[0].append(section)
     sections = sections[:1]

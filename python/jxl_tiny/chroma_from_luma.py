@@ -86,6 +86,8 @@ def find_best_multiplier(values_m: np.ndarray, values_s: np.ndarray,
     return np.int8(0)
   values_m = np.asarray(values_m, dtype=np.float32)
   values_s = np.asarray(values_s, dtype=np.float32)
+  # Regularized least-squares fit for predicting one chroma coefficient stream
+  # from luma. The result is quantized to the byte-sized CFL multiplier range.
   a = values_m * K_INV_COLOR_FACTOR
   b = np.float32(base) * values_m - values_s
   ca = np.sum(a * a, dtype=np.float32)
@@ -118,6 +120,7 @@ def compute_chroma_from_luma(xyb: np.ndarray) -> ChromaFromLumaResult:
       block_y = block_y.reshape(-1).copy()
       block_x = block_x.reshape(-1).copy()
       block_b = block_b.reshape(-1).copy()
+      # CFL models AC correlation only; average color stays in DC.
       block_y[0] = np.float32(0.0)
       block_x[0] = np.float32(0.0)
       block_b[0] = np.float32(0.0)

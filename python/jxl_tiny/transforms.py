@@ -84,6 +84,8 @@ def scaled_dct(block: np.ndarray) -> np.ndarray:
     tmp = _dct_columns(block)
     coeff = _dct_columns(tmp.T.copy()).T.copy()
   else:
+    # The missing final transpose is intentional: libjxl-tiny stores 16x8
+    # transform coefficients in this transposed canonical layout.
     tmp = _dct_columns(block)
     coeff = _dct_columns(tmp.T.copy())
   return coeff

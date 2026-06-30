@@ -82,6 +82,8 @@ def _compute_ac_group_fields(
             px1 = px0 + tile_blocks_x * BLOCK_DIM
 
             tile = xyb[:, py0:py1, px0:px1]
+            # AQ sees the full padded stripe so its four-pixel halo can cross
+            # tile boundaries; CFL is fit only from the current 64x64 tile.
             aq = compute_adaptive_quantization(
                 xyb,
                 distance,
@@ -314,6 +316,8 @@ def encode_from_image(image: np.ndarray, distance: float = 1.0) -> bytes:
                     global_group_x = base_ac_group_x + local_group_x
                     local_group_id = local_group_y * local_x_ac_groups + local_group_x
                     global_group_id = global_group_y * x_ac_groups + global_group_x
+                    # DC groups own several AC groups. The bitstream wants AC
+                    # groups in global raster order, so remap the local list.
                     ac_token_groups[global_group_id] = (
                         dc_encoding.ac_token_groups[local_group_id]
                     )

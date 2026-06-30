@@ -152,6 +152,8 @@ def _dc_from_lowest_frequencies(strategy: int, block: np.ndarray) -> np.ndarray:
   block = np.asarray(block, dtype=np.float32).reshape(-1)
   if strategy == DCT:
     return np.asarray([[block[0]]], dtype=np.float32)
+  # Larger transforms carry one extra low-frequency coefficient. Split it back
+  # over the covered 8x8 cells so the DC image keeps block-grid dimensions.
   low0 = block[0]
   low1 = np.float32(block[1] * K_DCT_16_TO_2_SCALE)
   if strategy == DCT16X8:
@@ -296,6 +298,9 @@ def quantize_ac_group(xyb: np.ndarray, raw_quant_field: np.ndarray,
       dc_y = _dc_from_lowest_frequencies(strategy, coeffs[1])
       quant_dc[1, by:by + covered_y, bx:bx + covered_x] = (
           _round_away_from_zero(inv_factor[1] * dc_y).astype(np.int16))
+      # Y is quantized first and then dequantized back to coefficient space.
+      # X/B CFL removal predicts chroma from this reconstructed Y, not from
+      # the original unquantized Y coefficients.
       coeffs[1], quantized_y = quantize_roundtrip_y_block_ac(
           coeffs[1], strategy, quant_ac, params.scale)
 
@@ -319,6 +324,8 @@ def quantize_ac_group(xyb: np.ndarray, raw_quant_field: np.ndarray,
             x_qm_mul if channel == 0 else 1.0,
         )
         dc = _dc_from_lowest_frequencies(strategy, coeffs[channel])
+        # X/B DC are stored after subtracting the corresponding Y-derived CFL
+        # contribution, matching the chroma residual that AC tokenization sees.
         quant_dc[channel, by:by + covered_y, bx:bx + covered_x] = (
             _round_away_from_zero(dc * inv_factor[channel] -
                                   quant_dc[1, by:by + covered_y,
@@ -335,6 +342,8 @@ def quantize_ac_group(xyb: np.ndarray, raw_quant_field: np.ndarray,
           count = _num_nonzero_except_llf(quantized[channel], xsize, ysize,
                                           covered_blocks)
           log2_covered_blocks = int(math.log2(covered_blocks))
+          # The raw count is tokenized, while the shifted value is replicated
+          # over covered 8x8 cells for neighboring nonzero-count prediction.
           shifted = (count + covered_blocks - 1) >> log2_covered_blocks
         num_nonzeros[channel] = count
         nzeros_map[channel, by:by + covered_y, bx:bx + covered_x] = shifted

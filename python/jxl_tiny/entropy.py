@@ -58,6 +58,8 @@ def create_huffman_tree(counts: np.ndarray, length: int,
   depth = np.zeros(K_ALPHABET_SIZE, dtype=np.uint8)
   count_limit = 1
   while True:
+    # Raising `count_limit` and rebuilding is the JPEG XL way to keep code
+    # lengths within `tree_limit` without changing the public token alphabet.
     tree: list[dict[str, int]] = []
     for i in range(length - 1, -1, -1):
       if counts[i] != 0:
@@ -157,6 +159,8 @@ def _cluster_histograms(histograms: np.ndarray) -> tuple[np.ndarray, np.ndarray]
   if histograms.shape[0] <= 1:
     return histograms.copy(), np.arange(histograms.shape[0], dtype=np.uint8)
 
+  # Start with the most distinct non-empty histograms, then merge the rest into
+  # the nearest winner. The returned context map records that remapping.
   max_histograms = min(K_CLUSTERS_LIMIT, histograms.shape[0])
   in_hist = histograms.copy()
   out: list[np.ndarray] = []
@@ -232,6 +236,7 @@ def _build_huffman_codes(histograms: np.ndarray) -> tuple[np.ndarray, np.ndarray
     while length > 0 and counts[length - 1] == 0:
       length -= 1
     depths[i] = create_huffman_tree(counts, length, 15)
+    # Prefix bits are stored LSB-first because BitWriter writes LSB-first.
     bits[i] = _convert_bit_depths_to_symbols(depths[i], length)
   return depths, bits
 

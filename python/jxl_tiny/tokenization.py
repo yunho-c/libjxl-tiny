@@ -154,6 +154,8 @@ def ac_metadata_tokens(ytox_map: np.ndarray, ytob_map: np.ndarray,
   qf = np.asarray(raw_quant_field, dtype=np.uint8)
   tokens: list[tuple[int, int]] = []
 
+  # CFL maps are small signed tile grids. Encode each value as a residual from
+  # the same clamped-gradient predictor used for quantized DC.
   for index, cfl_map in enumerate((ytox, ytob)):
     context = 2 - index
     for y in range(cfl_map.shape[0]):
@@ -166,6 +168,8 @@ def ac_metadata_tokens(ytox_map: np.ndarray, ytob_map: np.ndarray,
         residual = int(cfl_map[y, x]) - guess
         tokens.append((context, pack_signed(residual)))
 
+  # AC strategy tokens record only first blocks; continuation cells are implied
+  # by the selected transform size.
   left = 0
   for y in range(strategy_grid.shape[0]):
     for x in range(strategy_grid.shape[1]):
@@ -177,6 +181,8 @@ def ac_metadata_tokens(ytox_map: np.ndarray, ytob_map: np.ndarray,
       tokens.append((ctx, pack_signed(cur)))
       left = cur
 
+  # Quant-field tokens also follow first blocks. For rectangular transforms,
+  # `adjust_quant_field` has already made the covered cells share one value.
   left = _strategy_code(int(raw_strategy(strategy_grid[0, 0])))
   for y in range(strategy_grid.shape[0]):
     for x in range(strategy_grid.shape[1]):
@@ -189,6 +195,8 @@ def ac_metadata_tokens(ytox_map: np.ndarray, ytob_map: np.ndarray,
       tokens.append((ctx, pack_signed(residual)))
       left = cur
 
+  # libjxl-tiny writes fixed block metadata here. The Python port keeps the
+  # literal token stream so section bytes remain trace-comparable.
   for _ in range(strategy_grid.shape[0] * strategy_grid.shape[1]):
     tokens.append((0, pack_signed(4)))
 
@@ -250,6 +258,8 @@ def ac_tokens_from_quantized_blocks(
       covered_blocks = covered_x * covered_y
       log2_covered_blocks = int(math.log2(covered_blocks))
       size = block.quantized_ac.shape[1]
+      # Rectangular transforms reserve the first `covered_blocks` coefficient
+      # slots for low-frequency data already represented by the DC image.
       order_offset = 0 if strategy == DCT else K_DCT_BLOCK_SIZE
       order = K_COEFF_ORDERS[order_offset:order_offset + size]
 
@@ -259,6 +269,8 @@ def ac_tokens_from_quantized_blocks(
         global_by = by_offset + by
         row_top = None if global_by == 0 else group_nzeros[channel, global_by - 1]
         row = group_nzeros[channel, global_by]
+        # First emit the nonzero count, predicted from top/left block history.
+        # The remaining tokens encode signed coefficients in JPEG XL scan order.
         predicted = _predict_from_top_and_left(row_top, row, bx, 32)
         block_ctx = _block_context(channel, _strategy_code(strategy))
         tokens.append((_nonzero_context(predicted, block_ctx), nzeros))

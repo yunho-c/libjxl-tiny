@@ -228,6 +228,7 @@ def _transform_block(xyb: np.ndarray, strategy: int, channel: int, bx: int,
 def estimate_entropy(strategy: int, xyb: np.ndarray, bx0: int, by0: int,
                      cx: int, cy: int, distance: float, qf: np.ndarray,
                      maskf: np.ndarray, ytox: int, ytob: int) -> np.float32:
+  """Estimate rate-distortion cost for one candidate transform shape."""
   num_blocks = covered_blocks_x(strategy) * covered_blocks_y(strategy)
   bx = bx0 + cx
   by = by0 + cy
@@ -245,6 +246,8 @@ def estimate_entropy(strategy: int, xyb: np.ndarray, bx0: int, by0: int,
   info_loss = np.float32(0.0)
   info_loss2 = np.float32(0.0)
   entropy = np.float32(0.0)
+  # This is not actual entropy coding. It is a local proxy: estimated token cost
+  # for rounded coefficients plus a masked penalty for quantization error.
   cmap_factors = (
       np.float32(ytox) * K_INV_COLOR_FACTOR,
       np.float32(0.0),
@@ -337,6 +340,9 @@ def find_best_16x16_transform(xyb: np.ndarray, qf: np.ndarray,
   costs = np.asarray((cost16x8, cost8x16), dtype=np.float32)
 
   decision = np.full((2, 2), np.uint8((DCT << 1) | 1), dtype=np.uint8)
+  # First choose the cheaper rectangular orientation for the 2x2 region, then
+  # only replace subregions where that rectangle beats the two 8x8 blocks it
+  # would cover.
   if cost16x8 < cost8x16:
     if entropy_16x8[0] < entropy_8x8[0, 0] + entropy_8x8[1, 0]:
       _set_strategy(decision, 0, 0, DCT16X8)
@@ -381,5 +387,7 @@ def adjust_quant_field(raw_quant_field: np.ndarray,
       if x + blocks_x > xsize or y + blocks_y > ysize:
         raise ValueError(f"AC strategy at ({x}, {y}) exceeds quant field")
       block = quant[y:y + blocks_y, x:x + blocks_x]
+      # A multi-block transform must use one AC quant value for all covered
+      # cells, so lift the whole region to the local maximum.
       block[:, :] = np.max(block)
   return quant

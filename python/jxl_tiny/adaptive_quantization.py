@@ -201,6 +201,7 @@ def _gamma_modulation(xyb: np.ndarray, block_x: int, block_y: int,
 def _per_block_modulations(distance: float, xyb: np.ndarray, scale: np.float32,
                            aq_map: np.ndarray, block_x0: int = 0,
                            block_y0: int = 0) -> None:
+  """Fold perceptual per-block heuristics into the erosion-derived AQ map."""
   base_level = _f32(_f32(0.5) * scale)
   dampen = _f32(1.0)
   if distance >= 7.0:
@@ -351,6 +352,8 @@ def compute_adaptive_quantization(
                          dtype=np.float32)
   diff_buffer = np.zeros(x1 - x0, dtype=np.float32)
 
+  # Build a quarter-resolution contrast map from local Y/X differences. Fuzzy
+  # erosion below then spreads low-detail masking limits to neighboring blocks.
   for y in range(y_start, y_end):
     y2 = y + 1 if y + 1 < ysize else y
     y1 = y - 1 if y > 0 else y
@@ -390,6 +393,8 @@ def compute_adaptive_quantization(
   aq_map = _fuzzy_erosion(pre_erosion, from_x0, from_y0, block_width * 2,
                           block_height * 2)
   mask = np.empty_like(aq_map)
+  # AC-strategy scoring uses the pre-modulation mask, while final quantization
+  # uses the modulated AQ map converted to byte quant-field values.
   for y in range(block_height):
     for x in range(block_width):
       mask[y, x] = _compute_mask_for_ac_strategy_use(_f32(aq_map[y, x]))
