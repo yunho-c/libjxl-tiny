@@ -47,6 +47,22 @@ the image as sRGB and the helper converts it to linear RGB before calling
 `jxl_tiny.encode_from_image`. Transparent PNGs are composited on white by
 default; pass `--background '#000000'` to choose another background.
 
+## Compare the Python and C++ encoders
+
+Use `tools/compare_py_cjxl.py` to encode the same PFM/PNG/JPEG input with
+`cjxl_tiny` and the educational Python port:
+
+```bash
+tools/compare_py_cjxl.py input.png --work-dir build-codex/compare-py-cjxl -d 1.0
+just py-compare input.jpg build-codex/compare-py-cjxl 0.8
+```
+
+The helper normalizes the input to one shared PFM, writes both `.jxl` files,
+and prints their byte sizes. If `djxl` is available, it also decodes both
+outputs and reports cosine similarity, RMSE, MAE, and maximum absolute channel
+error against the source and against each other. Add `--require-djxl` when a
+missing decoder should make the command fail instead of skipping those metrics.
+
 ## Round-trip check
 
 To run a simple encode/decode similarity check, install a `djxl` decoder

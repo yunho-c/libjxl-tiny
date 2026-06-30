@@ -33,46 +33,26 @@ not commit generated trace artifacts.
 
 ## Inspect The Artifacts
 
-This snippet prints the arrays that are most useful for a first pass:
+Use the trace summary helper for a first pass through the C++ reference
+artifacts:
 
 ```bash
-python3 - <<'PY'
-from pathlib import Path
-import numpy as np
+python3 tools/trace_summary.py \
+  build-codex/learn/python-walkthrough/single/trace \
+  --preview 16
+```
 
-trace = Path("build-codex/learn/python-walkthrough/single/trace")
+Or use the `just` recipe:
 
-arrays = [
-    "dcg_0_acg_0_stripe_0_input_padded.npy",
-    "dcg_0_acg_0_stripe_0_xyb.npy",
-    "dcg_0_acg_0_stripe_0_tile_0_aq_map.npy",
-    "dcg_0_acg_0_stripe_0_tile_0_raw_quant_field.npy",
-    "dcg_0_ac_strategy.npy",
-    "dcg_0_quant_dc.npy",
-    "dcg_0_tokens_dc_tokens.npy",
-    "dcg_0_tokens_ac_metadata_tokens.npy",
-    "dcg_0_acg_0_stripe_0_ac_ac_tokens.npy",
-]
-
-for name in arrays:
-    value = np.load(trace / name)
-    print(f"{name}: shape={value.shape}, dtype={value.dtype}")
-    print(value.reshape(-1)[:16])
-    print()
-
-for name in [
-    "dc_global_section.bin",
-    "dc_group_section_0.bin",
-    "ac_global_section.bin",
-    "ac_group_section_0.bin",
-    "codestream.bin",
-]:
-    print(f"{name}: {(trace / name).stat().st_size} bytes")
-PY
+```bash
+just trace-summary build-codex/learn/python-walkthrough/single/trace 16
 ```
 
 The goal is not to memorize every value. The useful exercise is to watch the
-representation change from pixels, to coefficients, to tokens, to bytes.
+representation change from pixels, to coefficients, to tokens, to bytes. The
+summary groups artifacts by stage, prints array shapes and dtypes, previews the
+first few values in `.npy` files, and reports byte sizes for entropy sections
+and the final codestream.
 
 ## Step By Step
 
@@ -142,4 +122,3 @@ with different choices:
 The important conceptual shift is that JPEG XL spends more effort modeling
 perceptual importance and token contexts before entropy coding. The Python port
 keeps those stages visible so each representation can be inspected separately.
-

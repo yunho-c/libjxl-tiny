@@ -60,6 +60,14 @@ py-encode input output="" distance="1.0":
 
     tools/py_encode.py "$input" "$output" -d "$distance"
 
+# Summarize a C++ trace directory produced by the parity helpers.
+trace-summary trace_dir preview="16":
+    @tools/trace_summary.py "$1" --preview "$2"
+
+# Compare cjxl_tiny and educational Python encoder outputs from one input.
+py-compare input work_dir="build-codex/compare-py-cjxl" distance="1.0":
+    @tools/compare_py_cjxl.py "$1" --work-dir "$2" -d "$3"
+
 # Profile the educational Python encoder CLI with pyinstrument.
 py-profile input output="" distance="1.0" profile="py_encode_profile.html":
     #!/usr/bin/env bash
