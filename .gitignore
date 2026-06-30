@@ -1,3 +1,6 @@
+# Python
+*.pyc
+
 # Build output directories
 /build
 /build*
