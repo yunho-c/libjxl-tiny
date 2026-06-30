@@ -12,7 +12,7 @@ from .bitstream import codestream_bytes_from_groups
 from .chroma_from_luma import compute_chroma_from_luma
 from .image import copy_and_pad_image
 from .quantization import QuantizedBlock, quantize_ac_group
-from .tokenization import ac_metadata_tokens, ac_tokens, dc_tokens
+from .tokenization import ac_metadata_tokens, ac_tokens_from_quantized_blocks, dc_tokens
 from .xyb import to_xyb
 
 
@@ -75,7 +75,14 @@ def _compute_ac_group_fields(
             px1 = px0 + tile_blocks_x * BLOCK_DIM
 
             tile = xyb[:, py0:py1, px0:px1]
-            aq = compute_adaptive_quantization(tile, distance)
+            aq = compute_adaptive_quantization(
+                xyb,
+                distance,
+                block_x0=bx0,
+                block_y0=by0,
+                block_width=tile_blocks_x,
+                block_height=tile_blocks_y,
+            )
             raw_quant_field[by0 : by0 + tile_blocks_y, bx0 : bx0 + tile_blocks_x] = (
                 aq.raw_quant_field
             )
@@ -126,14 +133,32 @@ def _ac_group_tokens_and_quant_dc(
     ac_strategy: np.ndarray,
     ytox_map: np.ndarray,
     ytob_map: np.ndarray,
-    distance: float
-) -> tuple[np.ndarray, np.ndarray]:
+    distance: float,
+    nzeros_map: np.ndarray | None = None,
+    by_offset: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     quantized_blocks = quantize_ac_group(
         xyb, raw_quant_field, ac_strategy, ytox_map, ytob_map, distance
     )
+    local_nzeros_map = np.zeros(
+        (3, raw_quant_field.shape[0], raw_quant_field.shape[1]), dtype=np.uint8
+    )
+    for (by, bx), block in quantized_blocks.items():
+        covered_y = block.num_nonzeros_map.shape[1]
+        covered_x = block.num_nonzeros_map.shape[2]
+        local_nzeros_map[:, by : by + covered_y, bx : bx + covered_x] = (
+            block.num_nonzeros_map
+        )
+    token_nzeros_map = local_nzeros_map
+    if nzeros_map is not None:
+        _copy_into_global(nzeros_map, local_nzeros_map, by_offset, 0)
+        token_nzeros_map = nzeros_map
     return (
-        ac_tokens(xyb, raw_quant_field, ac_strategy, ytox_map, ytob_map, distance),
+        ac_tokens_from_quantized_blocks(
+            ac_strategy, quantized_blocks, token_nzeros_map, by_offset=by_offset
+        ),
         _quantized_blocks_to_quant_dc(raw_quant_field, quantized_blocks),
+        local_nzeros_map,
     )
 
 
@@ -175,20 +200,55 @@ def _encode_dc_group(rgb: np.ndarray, distance: float) -> _DcGroupEncoding:
                 group_py0 : group_py0 + group_height,
                 group_px0 : group_px0 + group_width,
             ]
-            group_xyb = to_xyb(copy_and_pad_image(group_rgb))
-            group_qf, group_acs, group_ytox, group_ytob = _compute_ac_group_fields(
-                group_xyb, group_width, group_height, distance
+            group_y_blocks = _ceil_div(group_height, BLOCK_DIM)
+            group_x_blocks = _ceil_div(group_width, BLOCK_DIM)
+            group_nzeros_map = np.zeros(
+                (3, group_y_blocks, group_x_blocks), dtype=np.uint8
             )
-            group_ac_tokens, group_quant_dc = _ac_group_tokens_and_quant_dc(
-                group_xyb, group_qf, group_acs, group_ytox, group_ytob, distance
-            )
-            ac_token_groups.append(group_ac_tokens)
+            group_token_stripes: list[np.ndarray] = []
 
-            _copy_into_global(raw_quant_field, group_qf, group_by0, group_bx0)
-            _copy_into_global(ac_strategy, group_acs, group_by0, group_bx0)
-            _copy_into_global(ytox_map, group_ytox, group_ty0, group_tx0)
-            _copy_into_global(ytob_map, group_ytob, group_ty0, group_tx0)
-            _copy_into_global(quant_dc, group_quant_dc, group_by0, group_bx0)
+            # libjxl-tiny streams each 256x256 AC group as 256x64 stripes to
+            # keep the transient XYB buffer small. This is an encoder memory
+            # optimization rather than an inherent compression requirement, but
+            # it affects padding, AQ halos, and row-context token prediction.
+            for stripe_y in range(_ceil_div(group_height, TILE_DIM)):
+                stripe_py0 = stripe_y * TILE_DIM
+                stripe_height = min(TILE_DIM, group_height - stripe_py0)
+                stripe_by0 = stripe_y * TILE_DIM_IN_BLOCKS
+                stripe_rgb = group_rgb[
+                    :, stripe_py0 : stripe_py0 + stripe_height, :
+                ]
+                stripe_xyb = to_xyb(copy_and_pad_image(stripe_rgb))
+                stripe_qf, stripe_acs, stripe_ytox, stripe_ytob = (
+                    _compute_ac_group_fields(
+                        stripe_xyb, group_width, stripe_height, distance
+                    )
+                )
+                stripe_ac_tokens, stripe_quant_dc, _ = _ac_group_tokens_and_quant_dc(
+                    stripe_xyb,
+                    stripe_qf,
+                    stripe_acs,
+                    stripe_ytox,
+                    stripe_ytob,
+                    distance,
+                    group_nzeros_map,
+                    stripe_by0,
+                )
+                group_token_stripes.append(stripe_ac_tokens)
+
+                _copy_into_global(
+                    raw_quant_field, stripe_qf, group_by0 + stripe_by0, group_bx0
+                )
+                _copy_into_global(
+                    ac_strategy, stripe_acs, group_by0 + stripe_by0, group_bx0
+                )
+                _copy_into_global(ytox_map, stripe_ytox, group_ty0 + stripe_y, group_tx0)
+                _copy_into_global(ytob_map, stripe_ytob, group_ty0 + stripe_y, group_tx0)
+                _copy_into_global(
+                    quant_dc, stripe_quant_dc, group_by0 + stripe_by0, group_bx0
+                )
+
+            ac_token_groups.append(np.concatenate(group_token_stripes, axis=0))
 
     return _DcGroupEncoding(
         dc_tokens=dc_tokens(quant_dc),

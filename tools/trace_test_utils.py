@@ -100,6 +100,34 @@ def artifacts_matching_numbered(manifest: dict[str, object],
   return [artifact for _, artifact in sorted(matches)]
 
 
+def load_ac_token_groups(trace_dir: Path,
+                         manifest: dict[str, object]) -> list[np.ndarray]:
+  artifacts = manifest.get("artifacts")
+  if not isinstance(artifacts, list):
+    raise RuntimeError("manifest has no artifact list")
+  regex = re.compile(
+      r"dcg_\d+_acg_(?P<index>\d+)_stripe_(?P<stripe>\d+)_ac_ac_tokens")
+  groups: dict[int, list[tuple[int, dict[str, object]]]] = {}
+  for artifact in artifacts:
+    if not isinstance(artifact, dict):
+      continue
+    match = regex.fullmatch(str(artifact.get("name", "")))
+    if match is None:
+      continue
+    groups.setdefault(int(match.group("index")), []).append(
+        (int(match.group("stripe")), artifact))
+  if not groups:
+    raise RuntimeError("no AC token artifacts found")
+  result: list[np.ndarray] = []
+  for index in sorted(groups):
+    stripes = [
+        load_named_artifact(trace_dir, artifact)
+        for _, artifact in sorted(groups[index])
+    ]
+    result.append(np.concatenate(stripes, axis=0))
+  return result
+
+
 def load_named_artifact(trace_dir: Path,
                         artifact: dict[str, object]) -> np.ndarray:
   path = trace_dir / str(artifact["path"])

@@ -192,7 +192,8 @@ def _gamma_modulation(xyb: np.ndarray, block_x: int, block_y: int,
 
 
 def _per_block_modulations(distance: float, xyb: np.ndarray, scale: np.float32,
-                           aq_map: np.ndarray) -> None:
+                           aq_map: np.ndarray, block_x0: int = 0,
+                           block_y0: int = 0) -> None:
   base_level = _f32(_f32(0.5) * scale)
   dampen = _f32(1.0)
   if distance >= 7.0:
@@ -204,9 +205,9 @@ def _per_block_modulations(distance: float, xyb: np.ndarray, scale: np.float32,
 
   y_blocks, x_blocks = aq_map.shape
   for iy in range(y_blocks):
-    block_y = iy * BLOCK_DIM
+    block_y = (block_y0 + iy) * BLOCK_DIM
     for ix in range(x_blocks):
-      block_x = ix * BLOCK_DIM
+      block_x = (block_x0 + ix) * BLOCK_DIM
       out_val = _compute_mask(_f32(aq_map[iy, ix]))
       out_val = _hf_modulation(xyb[1], block_x, block_y, out_val)
       out_val = _color_modulation(xyb, block_x, block_y, distance, out_val)
@@ -291,7 +292,11 @@ def inverse_global_ac_scale(distance: float) -> np.float32:
 
 def compute_adaptive_quantization(
     xyb: np.ndarray, distance: float,
-    inv_scale: float | np.float32 | None = None) -> AdaptiveQuantizationResult:
+    inv_scale: float | np.float32 | None = None,
+    block_x0: int = 0,
+    block_y0: int = 0,
+    block_width: int | None = None,
+    block_height: int | None = None) -> AdaptiveQuantizationResult:
   """Compute AQ outputs for a padded XYB stripe.
 
   The input is channel-first XYB data whose dimensions are multiples of 8.
@@ -307,15 +312,31 @@ def compute_adaptive_quantization(
   xsize = source.shape[2]
   y_blocks = ysize // BLOCK_DIM
   x_blocks = xsize // BLOCK_DIM
+  if block_width is None:
+    block_width = x_blocks - block_x0
+  if block_height is None:
+    block_height = y_blocks - block_y0
+  if block_x0 < 0 or block_y0 < 0 or block_width <= 0 or block_height <= 0:
+    raise ValueError("invalid adaptive quantization block rectangle")
+  if block_x0 + block_width > x_blocks or block_y0 + block_height > y_blocks:
+    raise ValueError("adaptive quantization block rectangle exceeds image")
 
   scale = _f32(K_AC_QUANT_FIELD / _f32(distance))
   match_gamma_offset = _f32(0.019)
   k_x_mul = _f32(23.426802998210313)
 
-  x0 = 0
-  x1 = xsize
-  y_start = 0
-  y_end = ysize
+  x0 = block_x0 * BLOCK_DIM
+  x1 = x0 + block_width * BLOCK_DIM
+  y_start = block_y0 * BLOCK_DIM
+  y_end = y_start + block_height * BLOCK_DIM
+  if x0 != 0:
+    x0 -= 4
+  if x1 != xsize:
+    x1 += 4
+  if y_start != 0:
+    y_start -= 4
+  if y_end != ysize:
+    y_end += 4
   pre_erosion = np.zeros(((y_end - y_start) // 4, (x1 - x0) // 4),
                          dtype=np.float32)
   diff_buffer = np.zeros(x1 - x0, dtype=np.float32)
@@ -354,13 +375,16 @@ def compute_adaptive_quantization(
                                            diff_buffer[px * 4 + 3]) *
                                       _f32(0.25))
 
-  aq_map = _fuzzy_erosion(pre_erosion, 0, 0, x_blocks * 2, y_blocks * 2)
+  from_x0 = 0 if (x0 % BLOCK_DIM) == 0 else 1
+  from_y0 = 0 if (y_start % BLOCK_DIM) == 0 else 1
+  aq_map = _fuzzy_erosion(pre_erosion, from_x0, from_y0, block_width * 2,
+                          block_height * 2)
   mask = np.empty_like(aq_map)
-  for y in range(y_blocks):
-    for x in range(x_blocks):
+  for y in range(block_height):
+    for x in range(block_width):
       mask[y, x] = _compute_mask_for_ac_strategy_use(_f32(aq_map[y, x]))
 
-  _per_block_modulations(distance, source, scale, aq_map)
+  _per_block_modulations(distance, source, scale, aq_map, block_x0, block_y0)
   if inv_scale is None:
     inv_scale = inverse_global_ac_scale(distance)
   raw = np.clip(np.floor(aq_map * _f32(inv_scale) + _f32(0.5)), 1,

@@ -22,6 +22,7 @@ from trace_test_utils import (
     assert_close,
     artifacts_matching_numbered,
     load_artifact,
+    load_ac_token_groups,
     load_named_artifact,
     load_manifest,
     resolve_executable,
@@ -73,11 +74,7 @@ def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
       np.concatenate(dc_token_groups, axis=0),
       np.concatenate(ac_metadata_token_groups, axis=0),
   )
-  ac_token_groups = [
-      load_named_artifact(trace_dir, artifact)
-      for artifact in artifacts_matching_numbered(
-          manifest, r"dcg_\d+_acg_(?P<index>\d+)_stripe_0_ac_ac_tokens")
-  ]
+  ac_token_groups = load_ac_token_groups(trace_dir, manifest)
   ac = ac_entropy_code(np.concatenate(ac_token_groups, axis=0))
   compare_entropy_code("dc_entropy", trace_dir, manifest, dc)
   compare_entropy_code("ac_entropy", trace_dir, manifest, ac)

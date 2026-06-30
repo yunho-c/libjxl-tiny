@@ -201,6 +201,27 @@ def ac_tokens(xyb: np.ndarray, raw_quant_field: np.ndarray,
     covered_x = block.num_nonzeros_map.shape[2]
     nzeros_map[:, by:by + covered_y, bx:bx + covered_x] = (
         block.num_nonzeros_map)
+  return ac_tokens_from_quantized_blocks(strategy_grid, quantized_blocks,
+                                         nzeros_map)
+
+
+def ac_tokens_from_quantized_blocks(
+    ac_strategy: np.ndarray,
+    quantized_blocks: dict[tuple[int, int], object],
+    nzeros_map: np.ndarray,
+    *,
+    by_offset: int = 0,
+) -> np.ndarray:
+  strategy_grid = np.asarray(ac_strategy, dtype=np.uint8)
+  group_nzeros = np.asarray(nzeros_map, dtype=np.uint8)
+  if group_nzeros.ndim != 3 or group_nzeros.shape[0] != 3:
+    raise ValueError("expected channel-first nonzero map with shape (3, y, x)")
+  if by_offset < 0:
+    raise ValueError("by_offset must be nonnegative")
+  if by_offset + strategy_grid.shape[0] > group_nzeros.shape[1]:
+    raise ValueError("AC strategy rows exceed nonzero map")
+  if strategy_grid.shape[1] > group_nzeros.shape[2]:
+    raise ValueError("AC strategy columns exceed nonzero map")
 
   tokens: list[tuple[int, int]] = []
   for by in range(strategy_grid.shape[0]):
@@ -221,8 +242,9 @@ def ac_tokens(xyb: np.ndarray, raw_quant_field: np.ndarray,
       for channel in (1, 0, 2):
         coeffs = block.quantized_ac[channel]
         nzeros = int(block.num_nonzeros[channel])
-        row_top = None if by == 0 else nzeros_map[channel, by - 1]
-        row = nzeros_map[channel, by]
+        global_by = by_offset + by
+        row_top = None if global_by == 0 else group_nzeros[channel, global_by - 1]
+        row = group_nzeros[channel, global_by]
         predicted = _predict_from_top_and_left(row_top, row, bx, 32)
         block_ctx = _block_context(channel, _strategy_code(strategy))
         tokens.append((_nonzero_context(predicted, block_ctx), nzeros))

@@ -19,6 +19,7 @@ import tempfile
 from trace_test_utils import (
     artifacts_matching_numbered,
     load_exact_bytes_artifact,
+    load_ac_token_groups,
     load_named_artifact,
     load_manifest,
     resolve_executable,
@@ -64,11 +65,7 @@ def compare_fixture(trace: str, work_dir: Path, fixture) -> None:
       for artifact in artifacts_matching_numbered(
           manifest, r"dcg_(?P<index>\d+)_ac_strategy")
   ]
-  ac_token_groups = [
-      load_named_artifact(trace_dir, artifact)
-      for artifact in artifacts_matching_numbered(
-          manifest, r"dcg_\d+_acg_(?P<index>\d+)_stripe_0_ac_ac_tokens")
-  ]
+  ac_token_groups = load_ac_token_groups(trace_dir, manifest)
   actual = codestream_bytes_from_groups(
       int(image["xsize"]),
       int(image["ysize"]),
