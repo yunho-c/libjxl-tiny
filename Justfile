@@ -40,3 +40,22 @@ encode input output="" distance="1.0":
     tools/pfm_tools.py convert "$input" "$pfm"
     "$cjxl" "$pfm" "$output" -d "$distance"
     printf 'Wrote %s\n' "$output"
+
+# Encode PFM/PNG/JPEG inputs with the educational Python port.
+py-encode input output="" distance="1.0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    input="$1"
+    output="$2"
+    distance="$3"
+
+    if [[ -z "$output" ]]; then
+      if [[ "$input" == *.* ]]; then
+        output="${input%.*}.jxl"
+      else
+        output="${input}.jxl"
+      fi
+    fi
+
+    tools/py_encode.py "$input" "$output" -d "$distance"

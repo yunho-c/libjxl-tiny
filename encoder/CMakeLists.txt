@@ -44,6 +44,11 @@ if(BUILD_TESTING)
       RESULT_VARIABLE JPEGXL_TINY_NUMPY_RESULT
       OUTPUT_QUIET
       ERROR_QUIET)
+    execute_process(
+      COMMAND ${PYTHON3_EXECUTABLE} -c "import PIL"
+      RESULT_VARIABLE JPEGXL_TINY_PILLOW_RESULT
+      OUTPUT_QUIET
+      ERROR_QUIET)
     if(JPEGXL_TINY_NUMPY_RESULT EQUAL 0)
       add_test(
         NAME trace_smoke_test
@@ -104,6 +109,15 @@ if(BUILD_TESTING)
           --trace $<TARGET_FILE:jxl_tiny_trace>
           --work-dir ${CMAKE_CURRENT_BINARY_DIR}/encode_trace_parity_test
           --fixture-matrix)
+      if(JPEGXL_TINY_PILLOW_RESULT EQUAL 0)
+        add_test(
+          NAME py_encode_smoke_test
+          COMMAND ${PYTHON3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/py_encode_smoke_test.py
+            --work-dir ${CMAKE_CURRENT_BINARY_DIR}/py_encode_smoke_test)
+      else()
+        message(STATUS "Pillow not found; skipping py_encode_smoke_test")
+      endif()
     else()
       message(STATUS "NumPy not found; skipping trace_smoke_test")
     endif()

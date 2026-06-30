@@ -32,6 +32,21 @@ just encode input.png
 just encode input.png output.jxl 0.8
 ```
 
+## Encode with the Python port
+
+The educational Python encoder can write `.jxl` files directly from PFM,
+PNG, JPEG, and other Pillow-readable images:
+
+```bash
+tools/py_encode.py input.png output.jxl -d 1.0
+just py-encode input.jpg output.jxl 0.8
+```
+
+For PFM input, pixels are read as linear RGB. For PNG/JPEG input, Pillow reads
+the image as sRGB and the helper converts it to linear RGB before calling
+`jxl_tiny.encode_from_image`. Transparent PNGs are composited on white by
+default; pass `--background '#000000'` to choose another background.
+
 ## Round-trip check
 
 To run a simple encode/decode similarity check, install a `djxl` decoder
