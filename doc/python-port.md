@@ -4,6 +4,9 @@ This document explains the Python/NumPy reproduction under `python/jxl_tiny`.
 The port is intended for learning and trace-backed validation against
 `libjxl-tiny`; it is not a separate attempt to design a better encoder.
 
+For a concrete example, start with the fixture-based walkthrough in
+[`doc/python-walkthrough.md`](python-walkthrough.md).
+
 ## Data Model
 
 The Python encoder operates on channel-first linear RGB arrays:
@@ -42,6 +45,39 @@ fundamental compression requirement. It reduces the transient XYB buffer from a
 full 256x256 AC group to one 256x64 row of tiles. The choice is still observable
 because stripe-local padding, tile halos, and row-context token prediction affect
 the produced tokens.
+
+## JPEG To Tiny JPEG XL
+
+If you already know baseline JPEG, the tiny JPEG XL path is a familiar
+transform-quantize-entropy pipeline with richer modeling:
+
+| Baseline JPEG idea | Tiny JPEG XL VarDCT counterpart |
+| --- | --- |
+| 8-bit gamma-coded input | Linear RGB input, then XYB. |
+| Usually fixed 8x8 DCT | 8x8, 16x8, or 8x16 DCT decisions. |
+| Quantization tables | Per-block adaptive quant field plus distance settings. |
+| YCbCr chroma handling | XYB plus chroma-from-luma prediction. |
+| Zigzag coefficient order | JPEG XL coefficient orders and context modeling. |
+| Huffman-coded scan | Logical tokens, clustered contexts, prefix codes, sections. |
+
+## Glossary
+
+| Term | Meaning in this port |
+| --- | --- |
+| VarDCT | The lossy JPEG XL path that stores transformed coefficients rather than direct pixels. |
+| XYB | A perceptual color space derived from linear RGB before transform coding. |
+| DC | Low-frequency coefficient data, stored as a small image and tokenized with prediction. |
+| AC | Higher-frequency transform coefficients for texture and edges. |
+| Block | An 8x8 pixel unit, the base grid for transforms and quantization. |
+| Tile | A 64x64 pixel region used for AQ, CFL, and AC-strategy decisions. |
+| AC group | A 256x256 pixel region whose AC coefficients are tokenized as one group. |
+| Stripe | A 256x64 row of tiles processed inside an AC group to reduce temporary memory. |
+| CFL | Chroma-from-luma prediction, using Y to reduce X/B channel AC energy. |
+| AQ | Adaptive quantization, a per-block estimate of how aggressively AC coefficients can be quantized. |
+| Token | A logical `(context, value)` pair before entropy coding. |
+| Entropy context | A model bucket used to choose prefix codes for token values. |
+| Section | A byte stream for one serialized part of a frame: DC global, DC group, AC global, or AC group. |
+| Codestream | The final bare JPEG XL byte stream written by the encoder. |
 
 ## Module Map
 
@@ -82,7 +118,9 @@ such as incorrect input linearization.
 
 ## Reading Path
 
-For a first pass, read modules in pipeline order:
+For a guided first pass, run the commands in
+[`doc/python-walkthrough.md`](python-walkthrough.md). Then read modules in
+pipeline order:
 
 1. `encoder.py`
 2. `image.py` and `xyb.py`
