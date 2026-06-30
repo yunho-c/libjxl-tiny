@@ -59,3 +59,30 @@ py-encode input output="" distance="1.0":
     fi
 
     tools/py_encode.py "$input" "$output" -d "$distance"
+
+# Profile the educational Python encoder CLI with pyinstrument.
+py-profile input output="" distance="1.0" profile="py_encode_profile.html":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    input="$1"
+    output="$2"
+    distance="$3"
+    profile="$4"
+
+    if [[ -z "$output" ]]; then
+      if [[ "$input" == *.* ]]; then
+        output="${input%.*}.jxl"
+      else
+        output="${input}.jxl"
+      fi
+    fi
+
+    if ! python3 -m pyinstrument --version >/dev/null 2>&1; then
+      echo "pyinstrument is required: python3 -m pip install pyinstrument" >&2
+      exit 1
+    fi
+
+    mkdir -p "$(dirname "$profile")"
+    python3 -m pyinstrument -r html -o "$profile" tools/py_encode.py "$input" "$output" -d "$distance"
+    printf 'Wrote profile %s\n' "$profile"
