@@ -1,4 +1,9 @@
-"""Chroma-from-luma helpers mirroring `encoder/enc_chroma_from_luma.cc`."""
+"""Estimate tile-local chroma-from-luma multipliers.
+
+The encoder predicts some X and B channel AC energy from the Y channel before
+quantizing chroma. This module mirrors `encoder/enc_chroma_from_luma.cc` and
+returns the byte-sized Y-to-X and Y-to-B multipliers serialized in AC metadata.
+"""
 
 from __future__ import annotations
 
@@ -92,7 +97,7 @@ def find_best_multiplier(values_m: np.ndarray, values_s: np.ndarray,
 
 
 def compute_chroma_from_luma(xyb: np.ndarray) -> ChromaFromLumaResult:
-  """Compute tile-local Y-to-X and Y-to-B multipliers for one XYB stripe."""
+  """Compute Y-to-X and Y-to-B multipliers for one 64x64 tile."""
   if xyb.ndim != 3 or xyb.shape[0] != 3:
     raise ValueError("expected channel-first XYB image with shape (3, y, x)")
   if xyb.shape[1] % BLOCK_DIM != 0 or xyb.shape[2] % BLOCK_DIM != 0:

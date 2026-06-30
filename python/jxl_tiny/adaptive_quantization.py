@@ -1,4 +1,11 @@
-"""Adaptive quantization helpers mirroring `encoder/enc_adaptive_quantization.cc`."""
+"""Perceptual adaptive quantization for the educational encoder.
+
+Adaptive quantization estimates how much AC detail each 8x8 block can lose
+before the loss becomes visible. The Python version keeps the same intermediate
+maps as `encoder/enc_adaptive_quantization.cc`: a floating AQ map, a masking
+map used by AC-strategy scoring, and the byte-valued raw quant field that is
+serialized later.
+"""
 
 from __future__ import annotations
 
@@ -297,10 +304,13 @@ def compute_adaptive_quantization(
     block_y0: int = 0,
     block_width: int | None = None,
     block_height: int | None = None) -> AdaptiveQuantizationResult:
-  """Compute AQ outputs for a padded XYB stripe.
+  """Compute AQ outputs for a block rectangle inside padded XYB data.
 
   The input is channel-first XYB data whose dimensions are multiples of 8.
-  This mirrors one `ComputeAdaptiveQuantFieldTile` call for the full stripe.
+  `block_x0`, `block_y0`, `block_width`, and `block_height` describe the tile
+  rectangle in 8x8-block coordinates. The pixel pass expands non-edge
+  rectangles by four pixels on each side, matching the small C++ halo used by
+  `ComputeAdaptiveQuantFieldTile` before fuzzy erosion.
   """
   if xyb.ndim != 3 or xyb.shape[0] != 3:
     raise ValueError("expected channel-first XYB image with shape (3, y, x)")

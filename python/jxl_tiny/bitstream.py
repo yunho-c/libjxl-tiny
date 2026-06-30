@@ -4,7 +4,13 @@
 # license that can be found in the LICENSE file or at
 # https://developers.google.com/open-source/licenses/bsd
 
-"""Bitstream serialization helpers for trace-backed section parity tests."""
+"""Serialize logical encoder tokens into JPEG XL frame bytes.
+
+Earlier modules produce integer token streams and entropy code tables. This
+module mirrors the LSB-first bit writer and frame-section layout from
+`enc_bit_writer.h` and `enc_frame.cc`, so tests can compare both individual
+sections and final codestream bytes against `cjxl_tiny`.
+"""
 
 from __future__ import annotations
 
@@ -649,6 +655,12 @@ def frame_sections_from_groups(
     ac_token_groups: list[np.ndarray], ac_strategy_groups: list[np.ndarray],
     distance: float, num_dc_groups: int | None = None,
     num_groups: int | None = None) -> list[BitWriter]:
+  """Build frame sections in the same order as `Frame::EncodeFrame`.
+
+  The section list is: DC global, one DC group section per DC group, AC global,
+  then one AC group section per AC group. `combine_sections()` may merge the
+  single-group four-section case later, matching the C++ writer behavior.
+  """
   if not dc_token_groups:
     raise ValueError("expected at least one DC token group")
   if len(dc_token_groups) != len(ac_metadata_token_groups):
@@ -746,6 +758,7 @@ def codestream_bytes_from_groups(
     ac_metadata_token_groups: list[np.ndarray], ac_token_groups: list[np.ndarray],
     ac_strategy_groups: list[np.ndarray], distance: float,
     num_dc_groups: int | None = None, num_groups: int | None = None) -> bytes:
+  """Write a complete bare JPEG XL codestream from precomputed group tokens."""
   if distance < 0.0:
     raise ValueError(f"invalid butteraugli distance: {distance}")
   if distance == 0.0:

@@ -1,4 +1,10 @@
-"""Educational Python helpers for reproducing libjxl-tiny stages."""
+"""Public stage helpers for the educational libjxl-tiny Python port.
+
+The exports here are meant for trace tests and small experiments. They expose
+the encoder pipeline at stage boundaries so readers can compare one Python
+stage against the corresponding `libjxl-tiny` trace without treating the module
+as a stable application API.
+"""
 
 from .ac_strategy import (
     adjust_quant_field,

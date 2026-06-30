@@ -1,4 +1,10 @@
-"""AC/DC quantization helpers mirroring `encoder/enc_group.cc`."""
+"""Transform and quantize AC groups for the educational encoder.
+
+This stage converts XYB pixels into selected DCT coefficients, quantized DC
+planes, AC coefficient arrays, and nonzero-count maps. The shapes and rounding
+rules intentionally mirror `encoder/enc_group.cc` because tokenization consumes
+the resulting maps exactly as the C++ encoder does.
+"""
 
 from __future__ import annotations
 
@@ -51,6 +57,8 @@ MATRICES = {
 
 @dataclass(frozen=True)
 class DistanceParams:
+  """Distance-dependent quantization parameters written into the frame header."""
+
   global_scale: int
   quant_dc: int
   scale: np.float32
@@ -61,6 +69,8 @@ class DistanceParams:
 
 @dataclass(frozen=True)
 class QuantizedBlock:
+  """Traceable outputs for one first block in the AC strategy grid."""
+
   raw_coefficients: np.ndarray
   quant_input_coefficients: np.ndarray
   quantized_ac: np.ndarray
@@ -240,6 +250,13 @@ def quantize_ac_group(xyb: np.ndarray, raw_quant_field: np.ndarray,
                       ac_strategy: np.ndarray, ytox_map: np.ndarray,
                       ytob_map: np.ndarray,
                       distance: float) -> dict[tuple[int, int], QuantizedBlock]:
+  """Quantize every first block in one AC group or stripe.
+
+  The result is keyed by `(block_y, block_x)` for cells whose encoded AC
+  strategy has `is_first_block` set. Each `QuantizedBlock` carries the AC
+  coefficients owned by that first block plus the quantized DC and shifted
+  nonzero maps for all 8x8 cells covered by the selected transform.
+  """
   if xyb.ndim != 3 or xyb.shape[0] != 3:
     raise ValueError("expected channel-first XYB image with shape (3, y, x)")
   qf = np.asarray(raw_quant_field, dtype=np.uint8)

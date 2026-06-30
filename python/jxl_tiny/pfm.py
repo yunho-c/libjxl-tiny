@@ -1,4 +1,9 @@
-"""Small NumPy PFM reader for libjxl-tiny reproduction tests."""
+"""PFM reader for the linear RGB input path.
+
+`cjxl_tiny` accepts PFM images as linear RGB floats. The Python port keeps this
+tiny reader so trace fixtures can bypass color-management questions and feed
+the encoder the same channel-first floating-point data directly.
+"""
 
 from __future__ import annotations
 

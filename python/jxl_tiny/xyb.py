@@ -1,4 +1,10 @@
-"""RGB-to-XYB conversion mirroring `encoder/enc_xyb.cc`."""
+"""Convert linear RGB pixels into the XYB color space used by VarDCT.
+
+XYB is the perceptual color transform used by the lossy encoder path. The
+constants mirror `encoder/enc_xyb.cc`; the NumPy implementation intentionally
+uses array operations while trace tests allow a small tolerance for the cube
+root approximation difference.
+"""
 
 from __future__ import annotations
 

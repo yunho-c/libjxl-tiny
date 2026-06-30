@@ -1,4 +1,10 @@
-"""Entropy-code optimization helpers mirroring `enc_entropy_code.cc`."""
+"""Build context maps and Huffman prefix codes for encoder tokens.
+
+Tokenization produces `(context, value)` pairs, but the bitstream stores those
+values through clustered entropy contexts and canonical prefix codes. This
+module mirrors the compact optimizer from `encoder/enc_entropy_code.cc` so the
+Python port can reproduce section bytes, not just higher-level token streams.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +26,8 @@ K_AC_CONTEXT_MAP = _extract_int_table(REPO_ROOT / "encoder" /
 
 @dataclass(frozen=True)
 class EntropyCodeTables:
+  """Prefix-code tables plus the token-context to prefix-code mapping."""
+
   context_map: np.ndarray
   prefix_depths: np.ndarray
   prefix_bits: np.ndarray

@@ -1,4 +1,10 @@
-"""Minimal whole-image encoder orchestration for the Python reproduction."""
+"""Whole-image orchestration for the educational Python encoder.
+
+This module ties the stage helpers together into the same lossy VarDCT path as
+`cjxl_tiny`. It is intentionally compact: each helper owns the stage-specific
+math, while this file owns image grouping, stripe order, and the data flow from
+linear RGB arrays to final codestream bytes.
+"""
 
 from __future__ import annotations
 
@@ -53,6 +59,7 @@ def _effective_distance(distance: float) -> float:
 def _compute_ac_group_fields(
     xyb: np.ndarray, xsize: int, ysize: int, distance: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute quant fields, AC strategy, and CFL maps for one AC stripe."""
     x_blocks = _ceil_div(xsize, BLOCK_DIM)
     y_blocks = _ceil_div(ysize, BLOCK_DIM)
     x_tiles = _ceil_div(xsize, TILE_DIM)
@@ -137,6 +144,12 @@ def _ac_group_tokens_and_quant_dc(
     nzeros_map: np.ndarray | None = None,
     by_offset: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Quantize one stripe and produce AC tokens plus local quantized DC.
+
+    `nzeros_map` may be a full AC-group map when stripes are being streamed.
+    Passing the group map lets row-context prediction see the previous stripe,
+    while `by_offset` tells tokenization where this stripe starts in that map.
+    """
     quantized_blocks = quantize_ac_group(
         xyb, raw_quant_field, ac_strategy, ytox_map, ytob_map, distance
     )

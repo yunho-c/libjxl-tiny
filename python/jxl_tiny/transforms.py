@@ -1,4 +1,9 @@
-"""DCT helpers used by the educational libjxl-tiny Python port."""
+"""Scaled DCT helpers for the VarDCT subset used by libjxl-tiny.
+
+The encoder only needs 8x8, 16x8, and 8x16 transforms. These routines preserve
+the scaled coefficient layout expected by quantization and AC-strategy scoring
+instead of presenting a general-purpose orthonormal DCT API.
+"""
 
 from __future__ import annotations
 

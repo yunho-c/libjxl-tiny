@@ -1,4 +1,9 @@
-"""Tokenization helpers mirroring `enc_frame.cc` and `enc_group.cc`."""
+"""Convert quantized encoder state into logical entropy tokens.
+
+The functions here stop just before Huffman optimization. They emit
+`(context, value)` pairs for DC residuals, AC metadata, and AC coefficients,
+mirroring the token order from `enc_frame.cc` and `enc_group.cc`.
+"""
 
 from __future__ import annotations
 
@@ -116,6 +121,7 @@ def _predict_from_top_and_left(row_top: np.ndarray | None, row: np.ndarray,
 
 
 def dc_tokens(quant_dc: np.ndarray) -> np.ndarray:
+  """Tokenize quantized DC planes with the JPEG XL gradient predictor."""
   quant = np.asarray(quant_dc, dtype=np.int16)
   if quant.ndim != 3 or quant.shape[0] != 3:
     raise ValueError("expected channel-first quant_dc with shape (3, y, x)")
@@ -141,6 +147,7 @@ def dc_tokens(quant_dc: np.ndarray) -> np.ndarray:
 def ac_metadata_tokens(ytox_map: np.ndarray, ytob_map: np.ndarray,
                        ac_strategy: np.ndarray,
                        raw_quant_field: np.ndarray) -> np.ndarray:
+  """Tokenize CFL maps, AC strategy choices, quant fields, and block metadata."""
   ytox = np.asarray(ytox_map, dtype=np.int8)
   ytob = np.asarray(ytob_map, dtype=np.int8)
   strategy_grid = np.asarray(ac_strategy, dtype=np.uint8)
@@ -212,6 +219,13 @@ def ac_tokens_from_quantized_blocks(
     *,
     by_offset: int = 0,
 ) -> np.ndarray:
+  """Tokenize AC coefficients from precomputed quantized blocks.
+
+  `nzeros_map` is the row-context map used to predict each block's nonzero
+  count. For striped encoding this can be the full 256x256 AC-group map, with
+  `by_offset` locating the current 256x64 stripe inside it so the first row of a
+  later stripe can see the previous stripe as its top row.
+  """
   strategy_grid = np.asarray(ac_strategy, dtype=np.uint8)
   group_nzeros = np.asarray(nzeros_map, dtype=np.uint8)
   if group_nzeros.ndim != 3 or group_nzeros.shape[0] != 3:

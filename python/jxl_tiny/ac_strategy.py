@@ -1,4 +1,11 @@
-"""AC strategy helpers for libjxl-tiny trace parity tests."""
+"""Choose VarDCT transform shapes for the educational encoder.
+
+JPEG XL can encode AC coefficients with different block shapes. This module
+mirrors `encoder/enc_ac_strategy.cc` for the subset used by `libjxl-tiny`:
+ordinary 8x8 DCT blocks plus 16x8 and 8x16 rectangular transforms. The scoring
+is deliberately close to the C++ formulas because small floating-point changes
+can alter tie decisions and then cascade into different quantization tokens.
+"""
 
 from __future__ import annotations
 
@@ -286,6 +293,13 @@ def find_best_16x16_transform(xyb: np.ndarray, qf: np.ndarray,
                               maskf: np.ndarray, distance: float, ytox: int,
                               ytob: int, bx0: int = 0, by0: int = 0,
                               cx: int = 0, cy: int = 0) -> AcStrategyDecision:
+  """Score one 2x2 block region and return the chosen strategy image.
+
+  The returned `decision` array uses the C++ trace encoding
+  `(raw_strategy << 1) | is_first_block`. Multi-block transforms write the same
+  raw strategy into every covered 8x8 cell, with `is_first_block` set only on
+  the top-left cell that owns the coefficients.
+  """
   mul8x8 = np.float32(
       np.float32(1.0735757687292623 * 0.75) +
       np.float32(-0.55 * 0.75) / (np.float32(distance) + np.float32(1.4)))
