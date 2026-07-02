@@ -54,6 +54,12 @@ summary groups artifacts by stage, prints array shapes and dtypes, previews the
 first few values in `.npy` files, and reports byte sizes for entropy sections
 and the final codestream.
 
+To run the broader Python-port validation suite after making changes, use:
+
+```bash
+just py-check
+```
+
 ## Step By Step
 
 1. `source.pfm` is a 17x9 linear RGB image. PFM inputs already satisfy the

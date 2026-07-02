@@ -116,6 +116,23 @@ tie differences because C++ and NumPy do not always reduce floating-point
 expressions in the same order. Those are distinct from large functional failures
 such as incorrect input linearization.
 
+## Validation
+
+Use the `py-check` recipe before and after editing the Python port:
+
+```bash
+just py-check
+```
+
+The recipe compiles the Python sources, runs codestream parity against the C++
+trace encoder fixture matrix, runs the PNG/PFM CLI smoke test when Pillow is
+installed, and runs a small Python-vs-`cjxl_tiny` comparison when `cjxl_tiny` is
+available. Generated files stay under `build-codex/python-port-check/`.
+
+`py-check` expects `jxl_tiny_trace` to be available from either
+`build-codex/encoder/jxl_tiny_trace`, `build/encoder/jxl_tiny_trace`, or `PATH`.
+If it is missing, build the trace encoder first, then rerun the recipe.
+
 ## Reading Path
 
 For a guided first pass, run the commands in

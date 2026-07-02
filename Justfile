@@ -68,6 +68,68 @@ trace-summary trace_dir preview="16":
 py-compare input work_dir="build-codex/compare-py-cjxl" distance="1.0":
     @tools/compare_py_cjxl.py "$1" --work-dir "$2" -d "$3"
 
+# Run the Python-port syntax, parity, smoke, and optional decode checks.
+py-check work_dir="build-codex/python-port-check":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    work_dir="$1"
+    export PYTHONDONTWRITEBYTECODE=1
+
+    resolve_tool() {
+      local name="$1"
+      if [[ -x "build-codex/encoder/${name}" ]]; then
+        printf 'build-codex/encoder/%s\n' "$name"
+      elif [[ -x "build/encoder/${name}" ]]; then
+        printf 'build/encoder/%s\n' "$name"
+      elif command -v "$name" >/dev/null 2>&1; then
+        command -v "$name"
+      else
+        return 1
+      fi
+    }
+
+    trace="$(resolve_tool jxl_tiny_trace || true)"
+    if [[ -z "$trace" ]]; then
+      echo "Could not find jxl_tiny_trace. Build it first with tracing enabled." >&2
+      echo "Expected build-codex/encoder/jxl_tiny_trace, build/encoder/jxl_tiny_trace, or a PATH entry." >&2
+      exit 1
+    fi
+
+    echo "== py_compile =="
+    python3 -m py_compile tools/*.py python/jxl_tiny/*.py
+
+    echo "== encode trace parity =="
+    python3 tools/encode_trace_parity_test.py \
+      --trace "$trace" \
+      --work-dir "${work_dir}/encode_trace_parity_test" \
+      --fixture-matrix
+
+    echo "== py_encode smoke =="
+    if python3 -c 'import PIL' >/dev/null 2>&1; then
+      python3 tools/py_encode_smoke_test.py \
+        --work-dir "${work_dir}/py_encode_smoke_test"
+    else
+      echo "Skipping py_encode_smoke_test because Pillow is not installed."
+    fi
+
+    echo "== Python vs cjxl_tiny compare =="
+    cjxl="$(resolve_tool cjxl_tiny || true)"
+    if [[ -n "$cjxl" ]]; then
+      source="${work_dir}/compare-source.pfm"
+      mkdir -p "$(dirname "$source")"
+      python3 tools/pfm_tools.py generate "$source" \
+        --width 17 \
+        --height 9 \
+        --pattern gradient
+      python3 tools/compare_py_cjxl.py "$source" \
+        --cjxl "$cjxl" \
+        --work-dir "${work_dir}/compare" \
+        -d 1.0
+    else
+      echo "Skipping compare_py_cjxl because cjxl_tiny is not available."
+    fi
+
 # Profile the educational Python encoder CLI with pyinstrument.
 py-profile input output="" distance="1.0" profile="py_encode_profile.html":
     #!/usr/bin/env bash
