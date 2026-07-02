@@ -40,6 +40,40 @@ lossy VarDCT path as `cjxl_tiny`:
 8. Optimize entropy tables, serialize sections, and write the JPEG XL
    codestream bytes.
 
+```mermaid
+flowchart TD
+  input["Linear RGB input\nPFM, or PNG/JPEG converted to linear RGB"]
+  validate["Validate shape, dtype, and distance"]
+  groups["Partition into DC groups\nand AC groups"]
+
+  input --> validate --> groups
+
+  subgraph ac_group["For each AC group"]
+    stripes["Process 256x64 stripes"]
+    pad["Pad stripe to whole 8x8 blocks"]
+    xyb["RGB to XYB"]
+
+    subgraph tile_work["For each 64x64 tile"]
+      aq["Adaptive quantization\nAQ map and raw quant field"]
+      cfl["Chroma-from-luma\nY to X/B predictors"]
+      strategy["AC strategy\nchoose 8x8, 16x8, or 8x16"]
+    end
+
+    dct["DCT and quantization\nquantized DC and AC coefficients"]
+    ac_tokens["AC coefficient tokens"]
+
+    stripes --> pad --> xyb --> aq --> cfl --> strategy --> dct --> ac_tokens
+  end
+
+  groups --> stripes
+  dct --> dc_image["Quantized DC image"]
+  dc_image --> dc_tokens["DC and control tokens"]
+  ac_tokens --> entropy["Context clustering\nand prefix-code tables"]
+  dc_tokens --> entropy
+  entropy --> sections["Serialize frame sections\nDC global, DC groups, AC global, AC groups"]
+  sections --> codestream["Final JPEG XL codestream bytes"]
+```
+
 The stripe layout is an encoder implementation choice in `libjxl-tiny`, not a
 fundamental compression requirement. It reduces the transient XYB buffer from a
 full 256x256 AC group to one 256x64 row of tiles. The choice is still observable
