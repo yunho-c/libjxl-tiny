@@ -131,7 +131,7 @@ def main(argv: list[str]) -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("input", type=Path)
   parser.add_argument("--work-dir", type=Path,
-                      default=Path("build-codex/compare-py-cjxl"))
+                      default=Path("build/compare-py-cjxl"))
   parser.add_argument("-d", "--distance", type=float, default=1.0)
   parser.add_argument("--cjxl", default=default_cjxl_path())
   parser.add_argument("--djxl", default="djxl")

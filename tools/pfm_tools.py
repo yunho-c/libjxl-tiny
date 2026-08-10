@@ -278,7 +278,7 @@ def resolve_executable(path: str) -> str:
 
 
 def default_cjxl_path() -> str:
-  for path in ("build-codex/encoder/cjxl_tiny", "build/encoder/cjxl_tiny"):
+  for path in ("build/encoder/cjxl_tiny", "build/encoder/cjxl_tiny"):
     if Path(path).exists():
       return path
   return "cjxl_tiny"

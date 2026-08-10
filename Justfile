@@ -22,8 +22,8 @@ encode input output="" distance="1.0":
 
     cjxl="${CJXL_TINY:-}"
     if [[ -z "$cjxl" ]]; then
-      if [[ -x build-codex/encoder/cjxl_tiny ]]; then
-        cjxl="build-codex/encoder/cjxl_tiny"
+      if [[ -x build/encoder/cjxl_tiny ]]; then
+        cjxl="build/encoder/cjxl_tiny"
       elif [[ -x build/encoder/cjxl_tiny ]]; then
         cjxl="build/encoder/cjxl_tiny"
       elif command -v cjxl_tiny >/dev/null 2>&1; then
@@ -65,11 +65,11 @@ trace-summary trace_dir preview="16":
     @tools/trace_summary.py "$1" --preview "$2"
 
 # Compare cjxl_tiny and educational Python encoder outputs from one input.
-py-compare input work_dir="build-codex/compare-py-cjxl" distance="1.0":
+py-compare input work_dir="build/compare-py-cjxl" distance="1.0":
     @tools/compare_py_cjxl.py "$1" --work-dir "$2" -d "$3"
 
 # Run the Python-port syntax, parity, smoke, and optional decode checks.
-py-check work_dir="build-codex/python-port-check":
+py-check work_dir="build/python-port-check":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -78,8 +78,8 @@ py-check work_dir="build-codex/python-port-check":
 
     resolve_tool() {
       local name="$1"
-      if [[ -x "build-codex/encoder/${name}" ]]; then
-        printf 'build-codex/encoder/%s\n' "$name"
+      if [[ -x "build/encoder/${name}" ]]; then
+        printf 'build/encoder/%s\n' "$name"
       elif [[ -x "build/encoder/${name}" ]]; then
         printf 'build/encoder/%s\n' "$name"
       elif command -v "$name" >/dev/null 2>&1; then
@@ -92,7 +92,7 @@ py-check work_dir="build-codex/python-port-check":
     trace="$(resolve_tool jxl_tiny_trace || true)"
     if [[ -z "$trace" ]]; then
       echo "Could not find jxl_tiny_trace. Build it first with tracing enabled." >&2
-      echo "Expected build-codex/encoder/jxl_tiny_trace, build/encoder/jxl_tiny_trace, or a PATH entry." >&2
+      echo "Expected build/encoder/jxl_tiny_trace, build/encoder/jxl_tiny_trace, or a PATH entry." >&2
       exit 1
     fi
 

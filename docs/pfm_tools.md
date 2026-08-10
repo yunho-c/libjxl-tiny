@@ -53,8 +53,8 @@ Use `tools/compare_py_cjxl.py` to encode the same PFM/PNG/JPEG input with
 `cjxl_tiny` and the educational Python port:
 
 ```bash
-tools/compare_py_cjxl.py input.png --work-dir build-codex/compare-py-cjxl -d 1.0
-just py-compare input.jpg build-codex/compare-py-cjxl 0.8
+tools/compare_py_cjxl.py input.png --work-dir build/compare-py-cjxl -d 1.0
+just py-compare input.jpg build/compare-py-cjxl 0.8
 ```
 
 The helper normalizes the input to one shared PFM, writes both `.jxl` files,

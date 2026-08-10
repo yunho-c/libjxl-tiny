@@ -19,16 +19,16 @@ python3 tools/encode_trace_parity_test.py \
   --height 9 \
   --pattern gradient \
   --distance 1.0 \
-  --work-dir build-codex/learn/python-walkthrough
+  --work-dir build/learn/python-walkthrough
 ```
 
 The trace files are written under:
 
 ```text
-build-codex/learn/python-walkthrough/single/trace
+build/learn/python-walkthrough/single/trace
 ```
 
-`build-codex/` is disposable build output. Use it for local exploration, but do
+`build/` is disposable build output. Use it for local exploration, but do
 not commit generated trace artifacts.
 
 ## Inspect The Artifacts
@@ -38,14 +38,14 @@ artifacts:
 
 ```bash
 python3 tools/trace_summary.py \
-  build-codex/learn/python-walkthrough/single/trace \
+  build/learn/python-walkthrough/single/trace \
   --preview 16
 ```
 
 Or use the `just` recipe:
 
 ```bash
-just trace-summary build-codex/learn/python-walkthrough/single/trace 16
+just trace-summary build/learn/python-walkthrough/single/trace 16
 ```
 
 The goal is not to memorize every value. The useful exercise is to watch the
@@ -132,7 +132,7 @@ keeps those stages visible so each representation can be inspected separately.
 ## More Things To Inspect
 
 These exercises are small enough to run quickly, but each one highlights a
-different encoder behavior. Put all generated output under `build-codex/` so it
+different encoder behavior. Put all generated output under `build/` so it
 stays disposable.
 
 ### Padding: 17x9
@@ -145,9 +145,9 @@ python3 tools/encode_trace_parity_test.py \
   --height 9 \
   --pattern gradient \
   --distance 1.0 \
-  --work-dir build-codex/learn/padding-17x9
+  --work-dir build/learn/padding-17x9
 
-just trace-summary build-codex/learn/padding-17x9/single/trace 16
+just trace-summary build/learn/padding-17x9/single/trace 16
 ```
 
 Look at `dcg_0_acg_0_stripe_0_input_padded.npy`. The image grows from 17x9
@@ -165,9 +165,9 @@ python3 tools/encode_trace_parity_test.py \
   --height 129 \
   --pattern rings \
   --distance 1.0 \
-  --work-dir build-codex/learn/ac-strategy-129
+  --work-dir build/learn/ac-strategy-129
 
-just trace-summary build-codex/learn/ac-strategy-129/single/trace 8
+just trace-summary build/learn/ac-strategy-129/single/trace 8
 ```
 
 Focus on `dcg_0_ac_strategy.npy` and the
@@ -186,8 +186,8 @@ for distance in 0.5 1.0 2.0; do
     --height 129 \
     --pattern gradient \
     --distance "$distance" \
-    --work-dir "build-codex/learn/distance-${distance}"
-  just trace-summary "build-codex/learn/distance-${distance}/single/trace" 0
+    --work-dir "build/learn/distance-${distance}"
+  just trace-summary "build/learn/distance-${distance}/single/trace" 0
 done
 ```
 
@@ -200,7 +200,7 @@ higher distances usually produce coarser quantization and smaller byte streams.
 For a PNG or JPEG, compare the Python encoder with `cjxl_tiny`:
 
 ```bash
-just py-compare input.png build-codex/learn/compare-real-input 1.0
+just py-compare input.png build/learn/compare-real-input 1.0
 ```
 
 The helper converts both encoders to the same linear-RGB PFM input first. If
@@ -213,16 +213,16 @@ Use the `py-profile` recipe when you want to see where the educational encoder
 spends time:
 
 ```bash
-tools/pfm_tools.py generate build-codex/learn/profile-source.pfm \
+tools/pfm_tools.py generate build/learn/profile-source.pfm \
   --width 257 \
   --height 193 \
   --pattern rings
 
 just py-profile \
-  build-codex/learn/profile-source.pfm \
-  build-codex/learn/profile-source.jxl \
+  build/learn/profile-source.pfm \
+  build/learn/profile-source.jxl \
   1.0 \
-  build-codex/learn/py-encode-profile.html
+  build/learn/py-encode-profile.html
 ```
 
 Open the generated HTML profile and look for whole-stage costs first. The goal

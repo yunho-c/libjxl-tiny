@@ -143,7 +143,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
 def main(argv: list[str]) -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--cjxl", default=pfm_tools.default_cjxl_path())
-  parser.add_argument("--trace", default="build-codex/encoder/jxl_tiny_trace")
+  parser.add_argument("--trace", default="build/encoder/jxl_tiny_trace")
   parser.add_argument("--work-dir", type=Path)
   parser.add_argument("--width", type=int, default=17)
   parser.add_argument("--height", type=int, default=9)
