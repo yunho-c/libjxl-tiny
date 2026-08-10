@@ -156,3 +156,11 @@ py-profile input output="" distance="1.0" profile="py_encode_profile.html":
     mkdir -p "$(dirname "$profile")"
     python3 -m pyinstrument -r html -o "$profile" tools/py_encode.py "$input" "$output" -d "$distance"
     printf 'Wrote profile %s\n' "$profile"
+
+# Build the C++ encoder used by the profiling workflow.
+cpp-build:
+    cmake --build build --target cjxl_tiny
+
+# Profile cjxl_tiny with the macOS Instruments Time Profiler.
+cpp-profile input distance="1.0": cpp-build
+    @scripts/cpp-profile.sh "$1" "$2"

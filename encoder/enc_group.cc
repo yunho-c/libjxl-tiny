@@ -586,8 +586,10 @@ Status WriteACGroup(const Image3F& opsin, const Rect& group_brect,
       }
     }
   }
-  JXL_RETURN_IF_ERROR(
-      TraceTokens(trace, trace_prefix + "_ac_tokens", trace_tokens));
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(
+        TraceTokens(trace, trace_prefix + "_ac_tokens", trace_tokens));
+  }
   return true;
 }
 

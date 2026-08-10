@@ -566,6 +566,12 @@ void WriteACGlobal(size_t num_groups, const EntropyCode& ac_code,
 Status WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
                     BitWriter* writer, EncoderTraceSink* trace = nullptr,
                     const std::string& trace_prefix = "") {
+  std::string dc_trace_name;
+  std::string ac_metadata_trace_name;
+  if (trace != nullptr) {
+    dc_trace_name = trace_prefix + "_dc_tokens";
+    ac_metadata_trace_name = trace_prefix + "_ac_metadata_tokens";
+  }
   {
     BitWriter::Allotment allotment(writer, 1024);
 #if OPTIMIZE_CODE
@@ -577,8 +583,8 @@ Status WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
 #endif
     allotment.Reclaim(writer);
   }
-  JXL_RETURN_IF_ERROR(WriteDCTokens(
-      data.quant_dc, dc_code, writer, trace, trace_prefix + "_dc_tokens"));
+  JXL_RETURN_IF_ERROR(
+      WriteDCTokens(data.quant_dc, dc_code, writer, trace, dc_trace_name));
   {
     size_t num_blocks = data.ac_strategy.xsize() * data.ac_strategy.ysize();
     size_t num_ac_blocks = CountACBlocks(data.ac_strategy);
@@ -599,7 +605,7 @@ Status WriteDCGroup(const DCGroupData& data, const EntropyCode& dc_code,
   }
   JXL_RETURN_IF_ERROR(WriteACMetadataTokens(
       data.ytox_map, data.ytob_map, data.ac_strategy, data.raw_quant_field,
-      dc_code, writer, trace, trace_prefix + "_ac_metadata_tokens"));
+      dc_code, writer, trace, ac_metadata_trace_name));
   return true;
 }
 
@@ -717,11 +723,13 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
   Rect raw_quant_rect(group_brect.x0() + tile_brect.x0(),
                       group_brect.y0() + tile_brect.y0(), tile_brect.xsize(),
                       tile_brect.ysize());
-  JXL_RETURN_IF_ERROR(TraceImageBRect(
-      trace,
-      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
-                    "raw_quant_field_pre_adjust"),
-      dc_data->raw_quant_field, raw_quant_rect));
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(TraceImageBRect(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                      "raw_quant_field_pre_adjust"),
+        dc_data->raw_quant_field, raw_quant_rect));
+  }
   int8_t ytox = 0, ytob = 0;
   (void)ytox;
   (void)ytob;
@@ -729,12 +737,16 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
   ComputeCmapTile(group, tile_brect, matrices, &ytox, &ytob,
                   tmem->block_storage(), tmem->scratch_space(),
                   tmem->coeff_storage());
-  JXL_RETURN_IF_ERROR(TraceScalarSB(
-      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytox"),
-      ytox));
-  JXL_RETURN_IF_ERROR(TraceScalarSB(
-      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytob"),
-      ytob));
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(TraceScalarSB(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytox"),
+        ytox));
+    JXL_RETURN_IF_ERROR(TraceScalarSB(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "ytob"),
+        ytob));
+  }
   const size_t tx = tile_brect.x0() / kTileDimInBlocks;
   const size_t ty = tile_brect.y0() / kTileDimInBlocks;
   group_trect.Row(&dc_data->ytox_map, ty)[tx] = ytox;
@@ -743,15 +755,19 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
 #if OPTIMIZE_BLOCK_SIZES
   for (size_t cy = 0; cy + 1 < tile_brect.ysize(); cy += 2) {
     for (size_t cx = 0; cx + 1 < tile_brect.xsize(); cx += 2) {
-      std::ostringstream decision_trace_name;
-      decision_trace_name << TraceTileName(dc_group_id, ac_group_id, stripe_y,
-                                           tile_x, "decision")
-                          << "_y_" << cy << "_x_" << cx;
+      std::string decision_trace_name;
+      if (trace != nullptr) {
+        std::ostringstream name;
+        name << TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                              "decision")
+             << "_y_" << cy << "_x_" << cx;
+        decision_trace_name = name.str();
+      }
       JXL_RETURN_IF_ERROR(FindBest16x16Transform(
           group, group_brect, tile_brect.x0(), tile_brect.y0(), cx, cy,
           distp.distance, matrices, tmem->quant_field, tmem->masking, ytox,
           ytob, &dc_data->ac_strategy, tmem->block_storage(),
-          tmem->scratch_space(), trace, decision_trace_name.str()));
+          tmem->scratch_space(), trace, decision_trace_name));
     }
   }
   Rect rect(group_brect.x0() + tile_brect.x0(),
@@ -759,22 +775,25 @@ Status ProcessTile(const Image3F& group, const Rect& tile_brect,
             tile_brect.ysize());
   AdjustQuantField(dc_data->ac_strategy, rect, &dc_data->raw_quant_field);
 #endif
-  JXL_RETURN_IF_ERROR(TraceImageBRect(
-      trace,
-      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
-                    "raw_quant_field_post_adjust"),
-      dc_data->raw_quant_field, raw_quant_rect));
-  JXL_RETURN_IF_ERROR(TraceImageFRect(
-      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "aq_map"),
-      tmem->quant_field, tile_rect, "float_stage"));
-  JXL_RETURN_IF_ERROR(TraceImageFRect(
-      trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "mask"),
-      tmem->masking, tile_rect, "float_stage"));
-  JXL_RETURN_IF_ERROR(TraceImageBRect(
-      trace,
-      TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
-                    "raw_quant_field"),
-      dc_data->raw_quant_field, raw_quant_rect));
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(TraceImageBRect(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                      "raw_quant_field_post_adjust"),
+        dc_data->raw_quant_field, raw_quant_rect));
+    JXL_RETURN_IF_ERROR(TraceImageFRect(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "aq_map"),
+        tmem->quant_field, tile_rect, "float_stage"));
+    JXL_RETURN_IF_ERROR(TraceImageFRect(
+        trace, TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x, "mask"),
+        tmem->masking, tile_rect, "float_stage"));
+    JXL_RETURN_IF_ERROR(TraceImageBRect(
+        trace,
+        TraceTileName(dc_group_id, ac_group_id, stripe_y, tile_x,
+                      "raw_quant_field"),
+        dc_data->raw_quant_field, raw_quant_rect));
+  }
   return true;
 }
 
@@ -839,13 +858,17 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
       Rect stripe_trect = dc_group_dim.TileRect(gx, dc_ty, kGroupDimInTiles, 1);
       // Convert current AC stripe to XYB, pad to whole blocks if necessary.
       CopyAndPadImage(linear, stripe_rect, &stripe);
-      JXL_RETURN_IF_ERROR(TraceImage3F(
-          trace, TraceStripeName(dc_group_id, ac_group_id, ty, "input_padded"),
-          stripe, "float_stage"));
+      if (trace != nullptr) {
+        JXL_RETURN_IF_ERROR(TraceImage3F(
+            trace, TraceStripeName(dc_group_id, ac_group_id, ty, "input_padded"),
+            stripe, "float_stage"));
+      }
       ToXYB(&stripe);
-      JXL_RETURN_IF_ERROR(TraceImage3F(
-          trace, TraceStripeName(dc_group_id, ac_group_id, ty, "xyb"), stripe,
-          "float_stage"));
+      if (trace != nullptr) {
+        JXL_RETURN_IF_ERROR(TraceImage3F(
+            trace, TraceStripeName(dc_group_id, ac_group_id, ty, "xyb"), stripe,
+            "float_stage"));
+      }
       // Compute heuristics data one kTileDim x kTileDim tile at a time. These
       // can be done in parallel.
       for (size_t tx = 0; tx < group_dim.xsize_tiles; ++tx) {
@@ -857,29 +880,38 @@ Status ProcessDCGroup(const Image3F& linear, size_t dc_gx, size_t dc_gy,
                                         &dc_data, &tmem, trace));
       }
       // Write AC stripe to bitstream and fill in dc_data->quant_dc.
+      std::string ac_trace_prefix;
+      if (trace != nullptr) {
+        ac_trace_prefix =
+            TraceStripeName(dc_group_id, ac_group_id, ty, "ac");
+      }
       JXL_RETURN_IF_ERROR(WriteACGroup(
           stripe, stripe_brect, matrices, distp.scale, distp.scale_dc,
           distp.x_qm_scale, &dc_data, ac_code, &num_nzeros, &gmem,
-          &(*output)[ac_group_idx], trace,
-          TraceStripeName(dc_group_id, ac_group_id, ty, "ac")));
+          &(*output)[ac_group_idx], trace, ac_trace_prefix));
     }
   }
 
-  JXL_RETURN_IF_ERROR(TraceImageSB(
-      trace, TraceDCGroupName(dc_group_id, "ytox_map"), dc_data.ytox_map));
-  JXL_RETURN_IF_ERROR(TraceImageSB(
-      trace, TraceDCGroupName(dc_group_id, "ytob_map"), dc_data.ytob_map));
-  JXL_RETURN_IF_ERROR(TraceAcStrategy(
-      trace, TraceDCGroupName(dc_group_id, "ac_strategy"),
-      dc_data.ac_strategy));
-  JXL_RETURN_IF_ERROR(TraceImage3S(
-      trace, TraceDCGroupName(dc_group_id, "quant_dc"), dc_data.quant_dc));
+  if (trace != nullptr) {
+    JXL_RETURN_IF_ERROR(TraceImageSB(
+        trace, TraceDCGroupName(dc_group_id, "ytox_map"), dc_data.ytox_map));
+    JXL_RETURN_IF_ERROR(TraceImageSB(
+        trace, TraceDCGroupName(dc_group_id, "ytob_map"), dc_data.ytob_map));
+    JXL_RETURN_IF_ERROR(TraceAcStrategy(
+        trace, TraceDCGroupName(dc_group_id, "ac_strategy"),
+        dc_data.ac_strategy));
+    JXL_RETURN_IF_ERROR(TraceImage3S(
+        trace, TraceDCGroupName(dc_group_id, "quant_dc"), dc_data.quant_dc));
+  }
 
   // Write DC group to bitstream.
   const size_t dc_group_idx = 1 + dc_gy * dim.xsize_dc_groups + dc_gx;
-  JXL_RETURN_IF_ERROR(WriteDCGroup(
-      dc_data, dc_code, &(*output)[dc_group_idx], trace,
-      TraceDCGroupName(dc_group_id, "tokens")));
+  std::string dc_trace_prefix;
+  if (trace != nullptr) {
+    dc_trace_prefix = TraceDCGroupName(dc_group_id, "tokens");
+  }
+  JXL_RETURN_IF_ERROR(WriteDCGroup(dc_data, dc_code, &(*output)[dc_group_idx],
+                                   trace, dc_trace_prefix));
   return true;
 }
 

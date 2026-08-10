@@ -74,3 +74,26 @@ tools/pfm_tools.py roundtrip --cjxl build/encoder/cjxl_tiny --djxl djxl
 
 The round-trip check reports cosine similarity, RMSE, MAE, and maximum absolute
 channel error.
+
+## Profile the C++ encoder
+
+On macOS with Xcode Instruments installed, use the `cpp-profile` recipe to run
+`cjxl_tiny` under the Time Profiler:
+
+```bash
+just cpp-profile input.png
+just cpp-profile input.pfm 0.8
+```
+
+The recipe first builds `build/encoder/cjxl_tiny`. PNG/JPEG conversion happens
+before profiling starts, so the capture measures `cjxl_tiny` rather than
+Pillow. PFM inputs are passed through directly. The script writes timestamped
+`.jxl` and `.trace` artifacts under `build/profiles/`, plus the converted `.pfm`
+for non-PFM inputs.
+
+Use a reasonably large, representative image so the encoder runs long enough
+for sampling. Open the resulting capture with `open path/to/profile.trace`, then
+inspect the call tree below `jxl::EncodeFile` and `jxl::EncodeFrame`. Useful
+stage-level symbols include `ToXYB`, `ComputeAdaptiveQuantFieldTile`,
+`ComputeCmapTile`, `FindBest16x16Transform`, `WriteACGroup`, `WriteDCGroup`,
+`OptimizeSections`, and `CombineSections`.
